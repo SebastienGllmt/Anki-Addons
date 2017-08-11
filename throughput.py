@@ -1,15 +1,11 @@
 #-*- coding: utf-8 -*-
 
-#todo: make undo reduce count by one (unless it makes it go negative)
 #todo: predicted cards by 4AM
-#todo: make tracking deck-specific
-#todo: save average to disk
-#todo: score based off ease
-#todo: erase progress bar code
+#todo: make tracking deck-specific (?)
+#todo: save average to disk (?). Either that or algorithm to go back and simular batches
 #todo: add page to stats
-#todo: points per card type (?)
-#todo: option for idle = no penalty
 #todo: flame when you're bypassing expectation
+
 """
 Anki Add-on: Throughput Tracker
 
@@ -20,11 +16,26 @@ Copyright: Sebastien Guillemot 2017
 License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 """
 
-# Please don't edit this if you don't know what you're doing.
+class settings:
+    ############### YOU MAY EDIT THESE SETTINGS ###############
+    barcolor = '#603960'        #progress bar highlight color
+    barbgcolor = '#BFBFBF'      #progress bar background color
+    timebox = 5                 # size (in minutes) of a study batch to consider for throughput
+    
+    exponential_weight = 0.5 # decay for exponential weighted average
+    goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
+    initial_throughput_guess = 15 - goal_offset # initial goal when you just started studying
+    points_by_card_type = [2,1,1] # get different amount of points based off if this card is (new, learning, due)
+    
+    penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
+    show_stats = True      #show stats as your studying
+    keep_log = False        #log activity to file
+############# END USER CONFIGURABLE SETTINGS #############
 
 import os
 import time
 
+from anki.collection import _Collection
 from anki.hooks import wrap, addHook
 from anki.sched import Scheduler
 from anki.utils import json
@@ -35,89 +46,41 @@ import Throughput
 import Throughput.logging as logging
 import Throughput.logging.handlers
 
-log = Throughput.logging.Logger
-
 def setupLog(obj, name):
     obj.log = logging.getLogger(name)
     obj.log.setLevel(logging.DEBUG)
         
     logName = os.path.join(os.path.dirname(os.path.realpath(__file__)), name + '.log')
-    fh = logging.handlers.RotatingFileHandler(logName, maxBytes=1e6, backupCount=5)
+    fh = logging.handlers.RotatingFileHandler(logName, maxBytes=1e7, backupCount=5)
     fmt = logging.Formatter('%(asctime)s [%(threadName)14s:%(filename)18s:%(lineno)5s - %(funcName)30s()] %(levelname)8s: %(message)s')
     fh.setFormatter(fmt)
     obj.log.addHandler(fh)
-
-class settings: #tiny class for holding settings
-    ############### YOU MAY EDIT THESE SETTINGS ###############
-    step = 1                    #this is how many points each tick of the progress bar represents
-    barcolor = '#603960'        #progress bar highlight color
-    barbgcolor = '#BFBFBF'      #progress bar background color
-    timebox = 5                 # size (in minutes) of a study batch to consider for throughput
-    
-    tries_eq = 2                #this many wrong answers gives us one point
-    matured_eq = 2              #this many matured cards gives us one point
-    learned_eq = 2              #this many newly learned cards gives us one point
-    
-    show_mini_stats = True      #Show Habitica HP, XP, and MP %s next to prog bar
-    keep_log = False            #log activity to file
-############# END USER CONFIGURABLE SETTINGS #############
 
 class Main(object):
     
     def __init__(self):
         setupLog(self, "Throughput")
-        self.progbar = ""
         self.throughputTracker = ThroughputTracker()
-    
-    #Make progress bar
-    def make_progbar(self, cur_score):
-        if settings.keep_log: 
-            self.log.debug("Begin function")
-        if settings.keep_log: 
-            self.log.debug("Current score for progress bar: %s out of %s" % (cur_score, settings.timebox))
-        
-        #length of progress bar excluding increased rate after threshold
-        real_length = int(settings.timebox / settings.step)
-        
-        #length of shaded bar excluding threshold trickery
-        real_point_length = int(cur_score / settings.step) % real_length #total real bar length
-        
-        #shaded bar should not be larger than whole prog bar
-        bar = min(real_length, real_point_length) #length of shaded bar
-        self.progbar = '<font color="%s">' % settings.barcolor
-        #full bar for each tick
-        for _ in range(bar):
-            self.progbar += "&#9608;"
-        self.progbar += '</font>'
-        points_left = int(real_length) - int(bar)
-        self.progbar += '<font color="%s">' % settings.barbgcolor
-        for _ in range(points_left):
-            self.progbar += "&#9608"
-        self.progbar += '</font>'
-        if settings.keep_log: 
-            self.log.debug("End function returning: %s" %  self.progbar)
     
 class ThroughputTracker(object):
 
     def __init__(self):
         setupLog(self, "ThroughputTracker")
-        self.responseCount = 0
+        self.batchPointCount = 0
         self.last_batch_time = time.time()
         self.previous_batches = [] # stored averages
-        self.exponential_weight = 0.5 # decay for exponential weighted average
-        self.goal_offset = 5 # how many more reviews than the exponential weighted average you hope to get this round
 
     def get_exponential_decay(self):
         if len(self.previous_batches) == 0:
-            return 0
+            return settings.initial_throughput_guess
         return self.get_exponential_decay_i(len(self.previous_batches)-1)
 
     def get_exponential_decay_i(self, i):
         if i == 0:
             return self.previous_batches[i]
 
-        node = self.exponential_weight * self.previous_batches[i]
-        node += (1-self.exponential_weight) * self.get_exponential_decay_i(i-1)
+        node = settings.exponential_weight * self.previous_batches[i]
+        node += (1-settings.exponential_weight) * self.get_exponential_decay_i(i-1)
         return node
 
     def throughout_stats(self):
@@ -131,36 +94,47 @@ class ThroughputTracker(object):
         if time_left < 0:
             minutes = settings.timebox
             seconds = 0
-            if self.responseCount > 0:
-                self.previous_batches.append(self.responseCount)
+            if self.batchPointCount > 0 or settings.penalize_idle:
+                self.previous_batches.append(self.batchPointCount)
                 if len(self.previous_batches) > 5:
                     self.previous_batches = self.previous_batches[1:6]
-                self.responseCount = 0
+                self.batchPointCount = 0
             self.last_batch_time = now
         else:
             minutes = int(time_left / 60)
             seconds = time_left % 60
 
-        string = "<font color='firebrick'>%s / %s</font> | <font color='darkorange'>%d:%02d</font>" % (self.responseCount, int(self.get_exponential_decay()) + self.goal_offset, minutes, seconds)
+        string = "<font color='firebrick'>%s / %s</font> | <font color='darkorange'>%d:%02d</font>" % (self.batchPointCount, int(self.get_exponential_decay()) + settings.goal_offset, minutes, seconds)
 
         if settings.keep_log: 
             self.log.debug("End function returning: %s" %  string)
         return string
 
-    def incrementResponseCount(self, card, ease):
-        self.responseCount += 1
+    def adjustPointCount(self, card, increment):
+        if card.type >= 0 and card.type < len(settings.points_by_card_type):
+            base_point = settings.points_by_card_type[card.type]
+        else:
+            # this shouldn't happen unless the user has a different addon that messes with card types and didn't change the config for this addon
+            base_point = 1
+
+        if increment:
+            self.batchPointCount += base_point
+        else:
+            self.batchPointCount -= base_point
+            # this can happen if you undo cards that were part of a previous batch
+            if self.batchPointCount < 0:
+                self.batchPointCount = 0
 
 throughput = Main()
 
-#Insert progress bar into bottom review stats
-#       along with database scoring
+#Insert stats into UI
 def my_remaining(x):
     if settings.keep_log: 
         throughput.log.debug("Begin function")
     
     ret = orig_remaining(x)
     
-    if settings.show_mini_stats:
+    if settings.show_stats:
         mini_stats = throughput.throughputTracker.throughout_stats()
         if mini_stats: 
             ret += " : %s" % (mini_stats)
@@ -189,7 +163,7 @@ def update_question_ui():
     mw.reviewer.typeCorrect = False
 def update_answer_ui():
     middle = mw.reviewer._answerButtons()
-    if settings.show_mini_stats:
+    if settings.show_stats:
         mini_stats = throughput.throughputTracker.throughout_stats()
         if mini_stats: 
             last_box = middle.rfind(r"</td>")
@@ -210,8 +184,16 @@ def onRefreshTimer():
 #refresh page periodically
 refreshTimer = mw.progress.timer(1000, onRefreshTimer, True)
 
+### check when user answers something
 def updateThroughputOnAnswer(x, card, ease):
-    throughput.throughputTracker.incrementResponseCount(card, ease)
+    throughput.throughputTracker.adjustPointCount(card, increment=True)
+Scheduler.answerCard = wrap(Scheduler.answerCard, updateThroughputOnAnswer, "before")
 
-# check when user answers something
-Scheduler.answerCard = wrap(Scheduler.answerCard, updateThroughputOnAnswer)
+# check for undos and remove points based off of it
+def updateThroughputOnUndo(x, _old):
+    cardid = _old(x)
+    if cardid:
+        card = mw.col.getCard(cardid)
+        throughput.throughputTracker.adjustPointCount(card, increment=False)
+        
+_Collection.undo = wrap(_Collection.undo, updateThroughputOnUndo, "around")
