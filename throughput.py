@@ -1,10 +1,12 @@
 #-*- coding: utf-8 -*-
 
-#todo: predicted cards by 4AM
+#todo: show number of cards you can cover until 4AM (or whatever time you set Anki to consider new day)
 #todo: make tracking deck-specific (?)
+#      initialize bars when you look at a collection instead of globally (or iterate over all decks?)
 #todo: save average to disk (?). Either that or algorithm to go back and simular batches
 #todo: add page to stats
 #todo: flame when you're bypassing expectation
+#todo: change color of timer as it gets closer to 0
 
 """
 Anki Add-on: Throughput Monitor
@@ -26,7 +28,7 @@ class settings:
     ############### YOU MAY EDIT THESE SETTINGS ###############
     barcolor = '#603960'        #progress bar highlight color
     barbgcolor = '#BFBFBF'      #progress bar background color
-    timebox = 5                 # size (in minutes) of a study batch to consider for throughput
+    timebox = 1                 # size (in minutes) of a study batch to consider for throughput
     
     exponential_weight = 0.5 # decay for exponential weighted average
     goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
@@ -37,25 +39,29 @@ class settings:
     show_stats = True      #show stats as your studying
     keep_log = False        #log activity to file
 
+    invert_timer = False
+    countdown_timer_as_percentage = False # whether or not to display the time left in batch or just the % time passed
     countdownBar = ProgressBar(
         textColor="black",
-        bgColor="Green",
-        fgColor="Limegreen",
+        bgColor="Green" if invert_timer else "Limegreen",
+        fgColor="Limegreen" if invert_timer else "Green",
         borderRadius=0,
         maxWidth="",
         orientationHV=Qt.Horizontal,
-        invertTF=False,
+        invertTF=not invert_timer,
         dockArea=Qt.BottomDockWidgetArea,
         pbStyle="",
-        rangeMin=1,
+        rangeMin=0,
         rangeMax=timebox*60,
         textVisible=True)
 
+    points_as_percentage = True
+    points_as_number = True
     pointBar = ProgressBar(
         textColor="white",
         bgColor="Darkslateblue",
         fgColor="Darkviolet",
-        borderRadius=1,
+        borderRadius=0,
         maxWidth="",
         orientationHV=Qt.Horizontal,
         invertTF=False,
@@ -66,8 +72,6 @@ class settings:
         textVisible=True)
 ############# END USER CONFIGURABLE SETTINGS #############
 progressBars = [settings.pointBar.progressBar, settings.countdownBar.progressBar]
-for bar in progressBars:
-    bar.hide()
 
 __version__ = '1.0'
 
@@ -81,6 +85,7 @@ from anki.utils import json
 from aqt.reviewer import Reviewer
 from aqt import mw
 
+from Throughput.stopwatch import Stopwatch
 import Throughput.logging as logging
 import Throughput.logging.handlers
 
@@ -91,25 +96,20 @@ try:
     Progress_Bar.getMX = lambda : 1
     Progress_Bar.progressBar, _ = Progress_Bar.pb()
     Progress_Bar.getMX = old_getMX
-    Progress_Bar._renderBar = lambda x,y: None
     
     progressBars.append(Progress_Bar.progressBar)
 except ImportError:
     pass
 
 hasDocked = False
-def _renderBar(state, oldState):
+def dockProgressBars(state, oldState):
     global hasDocked
     if not hasDocked:
         ProgressBar.dock(progressBars)
         hasDocked = True
     for bar in progressBars:
         ProgressBar.renderBar(bar, state, oldState)
-
-addHook("afterStateChange", _renderBar)
-
-#settings.countdownBar.progressBar.show()
-#settings.pointBar.progressBar.show()
+addHook("afterStateChange", dockProgressBars)
 
 def setupLog(obj, name):
     obj.log = logging.getLogger(name)
@@ -132,8 +132,8 @@ class ThroughputTracker(object):
     def __init__(self):
         setupLog(self, "ThroughputTracker")
         self.batchPointCount = 0
-        self.last_batch_time = time.time()
         self.previous_batches = [] # stored averages
+        self.stopwatch = Stopwatch()
 
     def get_exponential_decay(self):
         if len(self.previous_batches) == 0:
@@ -148,32 +148,63 @@ class ThroughputTracker(object):
         node += (1-settings.exponential_weight) * self.get_exponential_decay_i(i-1)
         return node
 
-    def throughout_stats(self):
+    def updateTime(self):
+        time_left = 60*settings.timebox - self.stopwatch.get_time()
         if settings.keep_log: 
-            self.log.debug("Begin function")
-        
-        now = time.time()
-        time_since_last_batch = int(now - self.last_batch_time)
-        time_left = 60*settings.timebox - time_since_last_batch
-
+            self.log.debug("timeleft: " + str(time_left))
         if time_left < 0:
-            minutes = settings.timebox
-            seconds = 0
+            pointbar_max = self.get_exponential_decay()
             if self.batchPointCount > 0 or settings.penalize_idle:
                 self.previous_batches.append(self.batchPointCount)
                 if len(self.previous_batches) > 5:
                     self.previous_batches = self.previous_batches[1:6]
                 self.batchPointCount = 0
-            self.last_batch_time = now
+                settings.pointBar.progressBar.setMaximum(pointbar_max)
+            self.stopwatch.reset()
+            self.stopwatch.start()
+
+            # readjust bars
+            self.setPointFormat(0, pointbar_max)
+            self.setCountdownFormat(0)
+        
         else:
-            minutes = int(time_left / 60)
-            seconds = time_left % 60
+            self.setCountdownFormat(self.stopwatch.get_time())
 
-        string = "<font color='firebrick'>%s / %s</font> | <font color='darkorange'>%d:%02d</font>" % (self.batchPointCount, int(self.get_exponential_decay()) + settings.goal_offset, minutes, seconds)
+    def setCountdownFormat(self, curr_time):
+        if settings.invert_timer:
+            if settings.countdown_timer_as_percentage:
+                self.setCountdownFormatPerc(curr_time, int(100*curr_time / (60*settings.timebox)))
+            else:
+                minutes = int(curr_time / 60)
+                seconds = int(curr_time % 60)
+                self.setCountdownFormatTime(curr_time, minutes, seconds)
+        else:
+            if settings.countdown_timer_as_percentage:
+                self.setCountdownFormatPerc(curr_time, int(100 - (100*curr_time) / (60*settings.timebox)))
+            else:
+                minutes = int(((settings.timebox*60) - curr_time) / 60)
+                seconds = int(((settings.timebox*60) - curr_time) % 60)
+                self.setCountdownFormatTime(curr_time, minutes, seconds)
 
-        if settings.keep_log: 
-            self.log.debug("End function returning: %s" %  string)
-        return string
+    def setCountdownFormatPerc(self, curr, perc):
+        settings.countdownBar.setValue(int(curr), str(perc) + "%")
+
+    def setCountdownFormatTime(self, curr, minutes, seconds):
+        settings.countdownBar.setValue(int(curr), "%d:%02d" % (minutes, seconds))
+
+    def setPointFormat(self, curr, maximum):
+        if settings.points_as_percentage:
+            if settings.points_as_number:
+                point_format = "%d / %d (%d%%)" % (curr, maximum, int(100*curr/maximum))
+            else:
+                point_format = "%d%%" % (int(100*curr/maximum))
+        else:
+            if settings.points_as_number:
+                point_format = "%d / %d" % (curr, maximum)
+            else:
+                point_format = " "
+
+        settings.pointBar.setValue(curr, point_format)
 
     def adjustPointCount(self, card, increment):
         if card.type >= 0 and card.type < len(settings.points_by_card_type):
@@ -190,63 +221,27 @@ class ThroughputTracker(object):
             if self.batchPointCount < 0:
                 self.batchPointCount = 0
 
+        pointbar_max = self.get_exponential_decay()
+        self.setPointFormat(self.batchPointCount, pointbar_max)
+
 throughput = Main()
 
-#Insert stats into UI
-def my_remaining(x):
-    if settings.keep_log: 
-        throughput.log.debug("Begin function")
-    
-    ret = orig_remaining(x)
-    
-    if settings.show_stats:
-        mini_stats = throughput.throughputTracker.throughout_stats()
-        if mini_stats: 
-            ret += " : %s" % (mini_stats)
-    if settings.keep_log: 
-        throughput.log.debug("End function returning: %s" %  ret)
-    return ret
+#initialize bars
+def initializeProgressBars(state, oldState):
+    if state == "overview":
+        throughput.throughputTracker.setPointFormat(throughput.throughputTracker.batchPointCount, throughput.throughputTracker.get_exponential_decay())
+        throughput.throughputTracker.setCountdownFormat(throughput.throughputTracker.stopwatch.get_time())
+addHook("afterStateChange", initializeProgressBars)
 
-orig_remaining = Reviewer._remaining
-Reviewer._remaining = my_remaining
-
-curr_state = "question"
-def set_state_as_question():
-    global curr_state
-    curr_state = "question"
-    update_question_ui()
-def set_state_as_answer():
-    global curr_state
-    curr_state = "answer"
-    update_answer_ui()
-addHook("showQuestion", set_state_as_question)
-addHook("showAnswer", set_state_as_answer)
-
-def update_question_ui():
-    mw.reviewer.typeCorrect = True
-    mw.reviewer._showAnswerButton()
-    mw.reviewer.typeCorrect = False
-def update_answer_ui():
-    middle = mw.reviewer._answerButtons()
-    if settings.show_stats:
-        mini_stats = throughput.throughputTracker.throughout_stats()
-        if mini_stats: 
-            last_box = middle.rfind(r"</td>")
-            if last_box != -1:
-                middle = middle[:last_box] + (r"<td align=center><span class=nobold></span><br>%s</td>" % (mini_stats)) + middle[last_box+len(r"</td>"):]
-                mw.reviewer.bottom.web.eval("showAnswer(%s);" % json.dumps(middle))
 
 #based on Anki 2.0.45 aqt/main.py AnkiQt.onRefreshTimer
 def onRefreshTimer():
     if settings.keep_log: 
-        throughput.log.debug(curr_state + " " + mw.state)
-    if curr_state == "question" and mw.state == "review":
-        update_question_ui()
+        throughput.log.debug(mw.state)
+    if throughput.throughputTracker.stopwatch.is_running():
+        throughput.throughputTracker.updateTime()
 
-    if curr_state == "answer" and mw.state == "review":
-        update_answer_ui()
-
-#refresh page periodically
+#refresh page periodically. Note: 1s is minimum time
 refreshTimer = mw.progress.timer(1000, onRefreshTimer, True)
 
 ### check when user answers something
@@ -262,3 +257,12 @@ def updateThroughputOnUndo(x, _old):
         throughput.throughputTracker.adjustPointCount(card, increment=False)
         
 _Collection.undo = wrap(_Collection.undo, updateThroughputOnUndo, "around")
+
+def pauseTimerOnReviewExit(state, oldState):
+    if settings.keep_log: 
+        throughput.log.debug("state: " + state)
+    if state in ["question", "answer", "review"]:
+        throughput.throughputTracker.stopwatch.start()
+    else:
+        throughput.throughputTracker.stopwatch.stop()
+addHook("afterStateChange", pauseTimerOnReviewExit)
