@@ -7,14 +7,20 @@
 #todo: flame when you're bypassing expectation
 
 """
-Anki Add-on: Throughput Tracker
+Anki Add-on: Throughput Monitor
 
 Tried to predict your throughput as you study.
 Hopes to encourage you to improve your throughput
 
-Copyright: Sebastien Guillemot 2017
+Copyright: Sebastien Guillemot 2017 <https://github.com/SebastienGllmt>
+Based off code by Glutanimate 2017 <https://glutanimate.com/>
+
 License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 """
+
+import Throughput
+from Throughput.bar import ProgressBar
+from aqt.qt import *
 
 class settings:
     ############### YOU MAY EDIT THESE SETTINGS ###############
@@ -30,21 +36,80 @@ class settings:
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
     show_stats = True      #show stats as your studying
     keep_log = False        #log activity to file
+
+    countdownBar = ProgressBar(
+        textColor="black",
+        bgColor="Green",
+        fgColor="Limegreen",
+        borderRadius=0,
+        maxWidth="",
+        orientationHV=Qt.Horizontal,
+        invertTF=False,
+        dockArea=Qt.BottomDockWidgetArea,
+        pbStyle="",
+        rangeMin=1,
+        rangeMax=timebox*60,
+        textVisible=True)
+
+    pointBar = ProgressBar(
+        textColor="white",
+        bgColor="Darkslateblue",
+        fgColor="Darkviolet",
+        borderRadius=1,
+        maxWidth="",
+        orientationHV=Qt.Horizontal,
+        invertTF=False,
+        dockArea=Qt.BottomDockWidgetArea,
+        pbStyle="",
+        rangeMin=0,
+        rangeMax=initial_throughput_guess,
+        textVisible=True)
 ############# END USER CONFIGURABLE SETTINGS #############
+progressBars = [settings.pointBar.progressBar, settings.countdownBar.progressBar]
+for bar in progressBars:
+    bar.hide()
+
+__version__ = '1.0'
 
 import os
 import time
 
 from anki.collection import _Collection
-from anki.hooks import wrap, addHook
+from anki.hooks import wrap, addHook, remHook, runHook
 from anki.sched import Scheduler
 from anki.utils import json
 from aqt.reviewer import Reviewer
 from aqt import mw
 
-import Throughput
 import Throughput.logging as logging
 import Throughput.logging.handlers
+
+try:
+    import Progress_Bar
+    Progress_Bar._dock = lambda x: None
+    old_getMX = Progress_Bar.getMX
+    Progress_Bar.getMX = lambda : 1
+    Progress_Bar.progressBar, _ = Progress_Bar.pb()
+    Progress_Bar.getMX = old_getMX
+    Progress_Bar._renderBar = lambda x,y: None
+    
+    progressBars.append(Progress_Bar.progressBar)
+except ImportError:
+    pass
+
+hasDocked = False
+def _renderBar(state, oldState):
+    global hasDocked
+    if not hasDocked:
+        ProgressBar.dock(progressBars)
+        hasDocked = True
+    for bar in progressBars:
+        ProgressBar.renderBar(bar, state, oldState)
+
+addHook("afterStateChange", _renderBar)
+
+#settings.countdownBar.progressBar.show()
+#settings.pointBar.progressBar.show()
 
 def setupLog(obj, name):
     obj.log = logging.getLogger(name)
