@@ -54,7 +54,7 @@ class settings:
         dockArea=Qt.BottomDockWidgetArea,
         pbStyle=None,
         rangeMin=0,
-        rangeMax=timebox,
+        rangeMax=timebox*1000, #use milliseconds
         textVisible=True)
 
     points_as_percentage = True
@@ -202,10 +202,10 @@ class ThroughputTracker(object):
                 break
 
     def setCountdownFormatPerc(self, curr, perc):
-        settings.countdownBar.setValue(int(curr), str(perc) + "%")
+        settings.countdownBar.setValue(int(curr*1000), str(perc) + "%")
 
     def setCountdownFormatTime(self, curr, minutes, seconds):
-        settings.countdownBar.setValue(int(curr), "%d:%02d" % (minutes, seconds))
+        settings.countdownBar.setValue(int(curr*1000), "%d:%02d" % (minutes, seconds))
 
     def setPointFormat(self, curr, maximum):
         maximum += settings.goal_offset
@@ -251,15 +251,15 @@ def initializeProgressBars(state, oldState):
 addHook("afterStateChange", initializeProgressBars)
 
 
-#based on Anki 2.0.45 aqt/main.py AnkiQt.onRefreshTimer
+# based on Anki 2.0.45 aqt/main.py AnkiQt.onRefreshTimer
 def onRefreshTimer():
     if settings.keep_log: 
         throughput.log.debug(mw.state)
     if throughput.throughputTracker.stopwatch.is_running():
         throughput.throughputTracker.updateTime()
 
-#refresh page periodically. Note: 1s is minimum time
-refreshTimer = mw.progress.timer(1000, onRefreshTimer, True)
+# refresh page periodically
+refreshTimer = mw.progress.timer(100, onRefreshTimer, True)
 
 ### check when user answers something
 def updateThroughputOnAnswer(x, card, ease):
