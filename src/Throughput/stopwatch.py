@@ -1,3 +1,11 @@
+"""
+Simulates a stopwatch
+
+Copyright: Sebastien Guillemot 2017 <https://github.com/SebastienGllmt>
+
+License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
+"""
+
 import time
 
 class Stopwatch:

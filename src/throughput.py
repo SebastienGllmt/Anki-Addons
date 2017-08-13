@@ -6,8 +6,6 @@
 #todo: save average to disk (?). Either that or algorithm to go back and simular batches
 #todo: add page to stats
 #todo: flame when you're bypassing expectation
-#todo: change color of timer as it gets closer to 0
-#todo: don't increment points bar passed 100
 #todo: allow bars to be in different spots (by creating a map for each direction -> bars that go there)
 
 """
@@ -30,7 +28,7 @@ class settings:
     ############### YOU MAY EDIT THESE SETTINGS ###############
     barcolor = '#603960'        #progress bar highlight color
     barbgcolor = '#BFBFBF'      #progress bar background color
-    timebox = 15                 # size (in seconds) of a study batch to consider for throughput
+    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
     
     exponential_weight = 0.5 # decay for exponential weighted average
     goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
@@ -40,7 +38,9 @@ class settings:
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
     show_stats = True      #show stats as your studying
     keep_log = False        #log activity to file
-
+    
+    #format: (show until we reach this percentage left in countdown, background color, foreground color)
+    countdown_colors = [(0.50, "#006400", "#008000"), (0.10, "#B8860B", "#DAA520"), (0.00, "#8B0000", "#B22222")]
     invert_timer = False
     countdown_timer_as_percentage = False # whether or not to display the time left in batch or just the % time passed
     countdownBar = ProgressBar(
@@ -52,7 +52,7 @@ class settings:
         orientationHV=Qt.Horizontal,
         invertTF=not invert_timer,
         dockArea=Qt.BottomDockWidgetArea,
-        pbStyle="",
+        pbStyle=None,
         rangeMin=0,
         rangeMax=timebox,
         textVisible=True)
@@ -68,7 +68,7 @@ class settings:
         orientationHV=Qt.Horizontal,
         invertTF=False,
         dockArea=Qt.BottomDockWidgetArea,
-        pbStyle="",
+        pbStyle=None,
         rangeMin=0,
         rangeMax=initial_throughput_guess,
         textVisible=True)
@@ -136,6 +136,7 @@ class ThroughputTracker(object):
         self.batchPointCount = 0
         self.previous_batches = [] # stored averages
         self.stopwatch = Stopwatch()
+        self.countdownColorIndex = 0
 
     def get_exponential_decay(self):
         if len(self.previous_batches) == 0:
@@ -174,20 +175,31 @@ class ThroughputTracker(object):
             self.setCountdownFormat(self.stopwatch.get_time())
 
     def setCountdownFormat(self, curr_time):
+        perc_left = 1 - (curr_time / settings.timebox)
         if settings.invert_timer:
             if settings.countdown_timer_as_percentage:
-                self.setCountdownFormatPerc(curr_time, int(100*curr_time / (settings.timebox)))
+                self.setCountdownFormatPerc(curr_time, 100*(1-perc_left))
             else:
                 minutes = int(curr_time / 60)
                 seconds = int(curr_time % 60)
                 self.setCountdownFormatTime(curr_time, minutes, seconds)
         else:
             if settings.countdown_timer_as_percentage:
-                self.setCountdownFormatPerc(curr_time, int(100 - (100*curr_time) / (settings.timebox)))
+                self.setCountdownFormatPerc(curr_time, 100*perc_left)
             else:
                 minutes = int(((settings.timebox) - curr_time) / 60)
                 seconds = int(((settings.timebox) - curr_time) % 60)
                 self.setCountdownFormatTime(curr_time, minutes, seconds)
+
+        for i, color in enumerate(settings.countdown_colors):
+            if perc_left > color[0]:
+                #if we're already at this color, don't recolor
+                if i == self.countdownColorIndex:
+                    break
+
+                self.countdownColorIndex = i
+                settings.countdownBar.recolor(bgColor=color[2], fgColor=color[1])
+                break
 
     def setCountdownFormatPerc(self, curr, perc):
         settings.countdownBar.setValue(int(curr), str(perc) + "%")

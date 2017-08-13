@@ -1,3 +1,12 @@
+"""
+Class for managing a QTProgressBar
+
+Copyright: Sebastien Guillemot 2017 <https://github.com/SebastienGllmt>
+Based off code by Glutanimate 2017 <https://glutanimate.com/>
+
+License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
+"""
+
 from aqt.qt import *
 from aqt import mw
 
@@ -17,8 +26,6 @@ class ProgressBar:
         rangeMax,
         textVisible):
 
-        pbdStyle = QStyleFactory.create("%s" % (pbStyle)) # Don't touch.
-
         """Initialize and set parameters for progress bar, adding it to the dock."""
         self.progressBar = QProgressBar()
         self.progressBar.setRange(rangeMin, rangeMax)
@@ -26,44 +33,73 @@ class ProgressBar:
         self.progressBar.setInvertedAppearance(invertTF)
         self.progressBar.setOrientation(orientationHV)
         self.progressBar.hide()
+
+        self.maxWidth = maxWidth
+        self.borderRadius = borderRadius
+        self.textColor = textColor
+        self.bgColor = bgColor
+        self.fgColor = fgColor
         
-        palette = QPalette()
-        palette.setColor(QPalette.Base, QColor(bgColor))
-        palette.setColor(QPalette.Highlight, QColor(fgColor))
-        palette.setColor(QPalette.Button, QColor(bgColor))
-        palette.setColor(QPalette.WindowText, QColor(textColor))
-        palette.setColor(QPalette.Window, QColor(bgColor))
+        self.recolor(textColor, bgColor, fgColor, borderRadius, maxWidth, pbStyle)
+            
+    def recolor(self,
+                textColor=None,
+                bgColor=None, 
+                fgColor=None, 
+                borderRadius=None, 
+                maxWidth=None, 
+                pbStyle=None):
+        
+        if textColor == None:
+            textColor = self.textColor
+        if bgColor == None:
+            bgColor = self.bgColor
+        if fgColor == None:
+            fgColor = self.fgColor
+        if maxWidth == None:
+            maxWidth = self.maxWidth
+        if borderRadius == None:
+            borderRadius = self.borderRadius
 
-        if maxWidth:
-            if orientationHV == Qt.Horizontal:
-                restrictSize = "max-height: %s;" % maxWidth
+        if pbStyle == None:
+            if maxWidth:
+                if orientationHV == Qt.Horizontal:
+                    restrictSize = "max-height: %s;" % maxWidth
+                else:
+                    restrictSize = "max-width: %s;" % maxWidth
             else:
-                restrictSize = "max-width: %s;" % maxWidth
-        else:
-            restrictSize = ""
-
-        if pbdStyle == None:
+                restrictSize = ""
+            
             self.progressBar.setStyleSheet(
             '''
-                        QProgressBar
-                    {
-                        text-align:center;
-                        color:%s;
-                        background-color: %s;
-                        border-radius: %dpx;
-                        %s
-                    }
-                        QProgressBar::chunk
-                    {
-                        background-color: %s;
-                        margin: 0px;
-                        border-radius: %dpx;
-                    }
-                    ''' % (textColor, bgColor, borderRadius, restrictSize, fgColor, borderRadius))
+                QProgressBar
+            {
+                text-align:center;
+                color:%s;
+                background-color: %s;
+                border-radius: %dpx;
+                %s
+            }
+                QProgressBar::chunk
+            {
+                background-color: %s;
+                margin: 0px;
+                border-radius: %dpx;
+            }
+            ''' % (textColor, bgColor, borderRadius, restrictSize, fgColor, borderRadius))
         else:
+            pbdStyle = QStyleFactory.create("%s" % (pbStyle))
             self.progressBar.setStyle(pbdStyle)
+            
+            palette = QPalette()
+            palette.setColor(QPalette.Base, QColor(bgColor))
+            palette.setColor(QPalette.Highlight, QColor(fgColor))
+            palette.setColor(QPalette.Button, QColor(bgColor))
+            palette.setColor(QPalette.WindowText, QColor(textColor))
+            palette.setColor(QPalette.Window, QColor(bgColor))
             self.progressBar.setPalette(palette)
-
+        
+        
 
     @staticmethod
     def dock(barList):
