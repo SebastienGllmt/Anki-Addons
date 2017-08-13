@@ -7,6 +7,8 @@
 #todo: add page to stats
 #todo: flame when you're bypassing expectation
 #todo: change color of timer as it gets closer to 0
+#todo: don't increment points bar passed 100
+#todo: allow bars to be in different spots (by creating a map for each direction -> bars that go there)
 
 """
 Anki Add-on: Throughput Monitor
@@ -28,12 +30,12 @@ class settings:
     ############### YOU MAY EDIT THESE SETTINGS ###############
     barcolor = '#603960'        #progress bar highlight color
     barbgcolor = '#BFBFBF'      #progress bar background color
-    timebox = 1                 # size (in minutes) of a study batch to consider for throughput
+    timebox = 15                 # size (in seconds) of a study batch to consider for throughput
     
     exponential_weight = 0.5 # decay for exponential weighted average
     goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
     initial_throughput_guess = 15 - goal_offset # initial goal when you just started studying
-    points_by_card_type = [2,1,1] # get different amount of points based off if this card is (new, learning, due)
+    points_by_card_type = [3,1,1] # get different amount of points based off if this card is (new, learning, due)
     
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
     show_stats = True      #show stats as your studying
@@ -42,7 +44,7 @@ class settings:
     invert_timer = False
     countdown_timer_as_percentage = False # whether or not to display the time left in batch or just the % time passed
     countdownBar = ProgressBar(
-        textColor="black",
+        textColor="white",
         bgColor="Green" if invert_timer else "Limegreen",
         fgColor="Limegreen" if invert_timer else "Green",
         borderRadius=0,
@@ -52,7 +54,7 @@ class settings:
         dockArea=Qt.BottomDockWidgetArea,
         pbStyle="",
         rangeMin=0,
-        rangeMax=timebox*60,
+        rangeMax=timebox,
         textVisible=True)
 
     points_as_percentage = True
@@ -149,17 +151,18 @@ class ThroughputTracker(object):
         return node
 
     def updateTime(self):
-        time_left = 60*settings.timebox - self.stopwatch.get_time()
+        time_left = settings.timebox - self.stopwatch.get_time()
         if settings.keep_log: 
             self.log.debug("timeleft: " + str(time_left))
         if time_left < 0:
-            pointbar_max = self.get_exponential_decay()
+            #update batch point history
             if self.batchPointCount > 0 or settings.penalize_idle:
                 self.previous_batches.append(self.batchPointCount)
                 if len(self.previous_batches) > 5:
                     self.previous_batches = self.previous_batches[1:6]
                 self.batchPointCount = 0
-                settings.pointBar.progressBar.setMaximum(pointbar_max)
+            pointbar_max = self.get_exponential_decay()
+                
             self.stopwatch.reset()
             self.stopwatch.start()
 
@@ -173,17 +176,17 @@ class ThroughputTracker(object):
     def setCountdownFormat(self, curr_time):
         if settings.invert_timer:
             if settings.countdown_timer_as_percentage:
-                self.setCountdownFormatPerc(curr_time, int(100*curr_time / (60*settings.timebox)))
+                self.setCountdownFormatPerc(curr_time, int(100*curr_time / (settings.timebox)))
             else:
                 minutes = int(curr_time / 60)
                 seconds = int(curr_time % 60)
                 self.setCountdownFormatTime(curr_time, minutes, seconds)
         else:
             if settings.countdown_timer_as_percentage:
-                self.setCountdownFormatPerc(curr_time, int(100 - (100*curr_time) / (60*settings.timebox)))
+                self.setCountdownFormatPerc(curr_time, int(100 - (100*curr_time) / (settings.timebox)))
             else:
-                minutes = int(((settings.timebox*60) - curr_time) / 60)
-                seconds = int(((settings.timebox*60) - curr_time) % 60)
+                minutes = int(((settings.timebox) - curr_time) / 60)
+                seconds = int(((settings.timebox) - curr_time) % 60)
                 self.setCountdownFormatTime(curr_time, minutes, seconds)
 
     def setCountdownFormatPerc(self, curr, perc):
@@ -193,6 +196,7 @@ class ThroughputTracker(object):
         settings.countdownBar.setValue(int(curr), "%d:%02d" % (minutes, seconds))
 
     def setPointFormat(self, curr, maximum):
+        maximum += settings.goal_offset
         if settings.points_as_percentage:
             if settings.points_as_number:
                 point_format = "%d / %d (%d%%)" % (curr, maximum, int(100*curr/maximum))
@@ -205,7 +209,8 @@ class ThroughputTracker(object):
                 point_format = " "
 
         settings.pointBar.setValue(curr, point_format)
-
+        settings.pointBar.progressBar.setMaximum(maximum)
+		
     def adjustPointCount(self, card, increment):
         if card.type >= 0 and card.type < len(settings.points_by_card_type):
             base_point = settings.points_by_card_type[card.type]
