@@ -5,8 +5,10 @@
 #      initialize bars when you look at a collection instead of globally (or iterate over all decks?)
 #todo: save average to disk (?). Either that or algorithm to go back and simular batches
 #todo: add page to stats
-#todo: flame when you're bypassing expectation
 #todo: allow bars to be in different spots (by creating a map for each direction -> bars that go there)
+
+#todo: fix flame in non-fullscreen mode
+#todo: make flame gif (?)
 
 """
 Anki Add-on: Throughput Monitor
@@ -26,18 +28,18 @@ from aqt.qt import *
 
 class settings:
     ############### YOU MAY EDIT THESE SETTINGS ###############
-    barcolor = '#603960'        #progress bar highlight color
-    barbgcolor = '#BFBFBF'      #progress bar background color
-    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
+    timebox = 30              # size (in seconds) of a study batch to consider for throughput
     
     exponential_weight = 0.5 # decay for exponential weighted average
     goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
-    initial_throughput_guess = 15 - goal_offset # initial goal when you just started studying
+    initial_throughput_guess = 5 - goal_offset # initial goal when you just started studying
     points_by_card_type = [3,1,1] # get different amount of points based off if this card is (new, learning, due)
     
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
-    show_stats = True      #show stats as your studying
     keep_log = False        #log activity to file
+
+    show_flame = True
+    flame_height = 100 # height in pixels (width is automatically adjusted to maintain aspect ratio)
     
     #format: (show until we reach this percentage left in countdown, background color, foreground color)
     countdown_colors = [(0.50, "#006400", "#008000"), (0.10, "#B8860B", "#DAA520"), (0.00, "#8B0000", "#B22222")]
@@ -91,6 +93,49 @@ from Throughput.stopwatch import Stopwatch
 import Throughput.logging as logging
 import Throughput.logging.handlers
 
+fire_file = os.path.join(mw.pm.addonFolder(), 'Throughput/img/fire.png')
+
+_flameLabel = None
+
+def getFlame(parent=None):
+    global _flameLabel
+
+    myImage = QImage()
+    myImage.load(fire_file)
+
+    aw = parent or mw.app.activeWindow() or mw
+    myLabel = QLabel(aw)
+
+    originalPixMap = QPixmap.fromImage(myImage)
+    newPixMap = originalPixMap.scaledToHeight(settings.flame_height)
+    myLabel.setPixmap(newPixMap)
+
+    #myLabel.setFrameStyle(QFrame.Panel)
+    myLabel.setLineWidth(2)
+    #myLabel.setWindowFlags(Qt.ToolTip)
+    vdiff = settings.flame_height + 128 # 128 add to account for the review bar at the bottom of the window
+    myLabel.setMargin(10)
+    myLabel.move(aw.mapToGlobal(QPoint(0, aw.height() - vdiff)))
+    
+    # set that the image can be shrunk if window is also shrunk
+    #myLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+    # scale the image to fit the size of the label
+    myLabel.adjustSize()
+    myLabel.show()
+
+    _flameLabel = myLabel
+
+def closeTooltip():
+    global _flameLabel
+    if _flameLabel:
+        try:
+            _flameLabel.deleteLater()
+        except:
+            # already deleted as parent window closed
+            pass
+        _flameLabel = None
+
+# add compatability with the Progress Bar plugin
 try:
     import Progress_Bar
     Progress_Bar._dock = lambda x: None
@@ -103,6 +148,7 @@ try:
 except ImportError:
     pass
 
+# add all the progress bars to the UI
 hasDocked = False
 def dockProgressBars(state, oldState):
     global hasDocked
@@ -222,6 +268,14 @@ class ThroughputTracker(object):
 
         settings.pointBar.setValue(curr, point_format)
         settings.pointBar.progressBar.setMaximum(maximum)
+
+        if settings.show_flame:
+            global _flameLabel
+            if self.batchPointCount >= maximum and _flameLabel == None:
+                getFlame()
+            if self.batchPointCount < maximum and _flameLabel != None:
+                _flameLabel.deleteLater()
+                _flameLabel = None
 		
     def adjustPointCount(self, card, increment):
         if card.type >= 0 and card.type < len(settings.points_by_card_type):
@@ -240,7 +294,6 @@ class ThroughputTracker(object):
 
         pointbar_max = self.get_exponential_decay()
         self.setPointFormat(self.batchPointCount, pointbar_max)
-
 throughput = Main()
 
 #initialize bars
@@ -275,6 +328,7 @@ def updateThroughputOnUndo(x, _old):
         
 _Collection.undo = wrap(_Collection.undo, updateThroughputOnUndo, "around")
 
+# stop the stopwatch when we exit reviews
 def pauseTimerOnReviewExit(state, oldState):
     if settings.keep_log: 
         throughput.log.debug("state: " + state)
@@ -282,4 +336,5 @@ def pauseTimerOnReviewExit(state, oldState):
         throughput.throughputTracker.stopwatch.start()
     else:
         throughput.throughputTracker.stopwatch.stop()
+    
 addHook("afterStateChange", pauseTimerOnReviewExit)
