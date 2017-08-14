@@ -2,11 +2,9 @@
 
 #todo: show number of cards you can cover until 4AM (or whatever time you set Anki to consider new day)
 #todo: make tracking deck-specific (?)
-#      initialize bars when you look at a collection instead of globally (or iterate over all decks?)
 #todo: save average to disk (?). Either that or algorithm to go back and simular batches
 #todo: add page to stats
 
-#todo: fix flame in non-fullscreen mode
 #todo: make flame gif (?)
 
 """
@@ -318,7 +316,6 @@ def onRefreshTimer():
         throughput.log.debug(mw.state)
     if throughput.throughputTracker.stopwatch.is_running():
         throughput.throughputTracker.updateTime()
-
 # refresh page periodically
 refreshTimer = mw.progress.timer(100, onRefreshTimer, True)
 
@@ -333,7 +330,6 @@ def updateThroughputOnUndo(x, _old):
     if cardid:
         card = mw.col.getCard(cardid)
         throughput.throughputTracker.adjustPointCount(card, increment=False)
-        
 _Collection.undo = wrap(_Collection.undo, updateThroughputOnUndo, "around")
 
 # stop the stopwatch when we exit reviews
@@ -344,5 +340,4 @@ def pauseTimerOnReviewExit(state, oldState):
         throughput.throughputTracker.stopwatch.start()
     else:
         throughput.throughputTracker.stopwatch.stop()
-    
 addHook("afterStateChange", pauseTimerOnReviewExit)
