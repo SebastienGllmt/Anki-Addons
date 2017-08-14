@@ -28,11 +28,11 @@ from aqt.qt import *
 
 class settings:
     ############### YOU MAY EDIT THESE SETTINGS ###############
-    timebox = 30              # size (in seconds) of a study batch to consider for throughput
+    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
     
     exponential_weight = 0.5 # decay for exponential weighted average
     goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
-    initial_throughput_guess = 5 - goal_offset # initial goal when you just started studying
+    initial_throughput_guess = 15 - goal_offset # initial goal when you just started studying
     points_by_card_type = [3,1,1] # get different amount of points based off if this card is (new, learning, due)
     
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
@@ -115,7 +115,7 @@ def getFlame(parent=None):
     #myLabel.setWindowFlags(Qt.ToolTip)
     vdiff = settings.flame_height + 128 # 128 add to account for the review bar at the bottom of the window
     myLabel.setMargin(10)
-    myLabel.move(aw.mapToGlobal(QPoint(0, aw.height() - vdiff)))
+    myLabel.move(QPoint(0, aw.height() - vdiff))
     
     # set that the image can be shrunk if window is also shrunk
     #myLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
