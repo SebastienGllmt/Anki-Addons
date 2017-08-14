@@ -102,7 +102,7 @@ class ProgressBar:
         
 
     @staticmethod
-    def dock(barList):
+    def dock(barList, dockArea):
         """Dock for the progress bar. Giving it a blank title bar,
         making sure to set focus back to the reviewer."""
 
@@ -119,12 +119,16 @@ class ProgressBar:
             dock.setObjectName("pbDock_" + str(i))
             dock.setWidget(bar)
             dock.setTitleBarWidget( tWidget )
-            mw.addDockWidget(Qt.TopDockWidgetArea, dock)
+            mw.addDockWidget(dockArea, dock)
             if prevWidget == None:
                 prevWidget = dock
             else:
                 # Moves second dock widget on top of first dock widget
-                mw.splitDockWidget(prevWidget, dock, Qt.Vertical)
+                if dockArea == Qt.TopDockWidgetArea or dockArea == Qt.BottomDockWidgetArea:
+                    stack_method = Qt.Vertical
+                if dockArea == Qt.LeftDockWidgetArea or dockArea == Qt.RightDockWidgetArea:
+                    stack_method = Qt.Horizontal
+                mw.splitDockWidget(prevWidget, dock, stack_method)
                 prevWidget = dock
         mw.web.setFocus()
 

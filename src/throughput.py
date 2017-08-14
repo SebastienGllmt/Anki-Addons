@@ -5,7 +5,6 @@
 #      initialize bars when you look at a collection instead of globally (or iterate over all decks?)
 #todo: save average to disk (?). Either that or algorithm to go back and simular batches
 #todo: add page to stats
-#todo: allow bars to be in different spots (by creating a map for each direction -> bars that go there)
 
 #todo: fix flame in non-fullscreen mode
 #todo: make flame gif (?)
@@ -28,18 +27,28 @@ from aqt.qt import *
 
 class settings:
     ############### YOU MAY EDIT THESE SETTINGS ###############
-    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
     
+    keep_log = False        #log activity to file
+
+    ### FLAME SETTINGS ###
+    show_flame = True
+    flame_height = 100 # height in pixels (width is automatically adjusted to maintain aspect ratio)
+
+    ### PROGRESS BAR SETTINGS ###
+
+    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
+
+    # Point bar settings
+    penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
     exponential_weight = 0.5 # decay for exponential weighted average
     goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
     initial_throughput_guess = 15 - goal_offset # initial goal when you just started studying
     points_by_card_type = [3,1,1] # get different amount of points based off if this card is (new, learning, due)
-    
-    penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
-    keep_log = False        #log activity to file
 
-    show_flame = True
-    flame_height = 100 # height in pixels (width is automatically adjusted to maintain aspect ratio)
+    # area where the bars will appear. Uncomment the one you want to 
+    # note: Qt.LeftDockWidgetArea and Qt.RightDockWidgetArea are not well supported
+    #bar_area = Qt.TopDockWidgetArea
+    bar_area = Qt.BottomDockWidgetArea
     
     #format: (show until we reach this percentage left in countdown, background color, foreground color)
     countdown_colors = [(0.50, "#006400", "#008000"), (0.10, "#B8860B", "#DAA520"), (0.00, "#8B0000", "#B22222")]
@@ -47,13 +56,13 @@ class settings:
     countdown_timer_as_percentage = False # whether or not to display the time left in batch or just the % time passed
     countdownBar = ProgressBar(
         textColor="white",
-        bgColor="Green" if invert_timer else "Limegreen",
-        fgColor="Limegreen" if invert_timer else "Green",
+        bgColor=countdown_colors[0][2] if invert_timer else countdown_colors[0][1],
+        fgColor=countdown_colors[0][1] if invert_timer else countdown_colors[0][2],
         borderRadius=0,
         maxWidth="",
-        orientationHV=Qt.Horizontal,
+        orientationHV=Qt.Horizontal if bar_area == Qt.TopDockWidgetArea or bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
         invertTF=not invert_timer,
-        dockArea=Qt.BottomDockWidgetArea,
+        dockArea=bar_area,
         pbStyle=None,
         rangeMin=0,
         rangeMax=timebox*1000, #use milliseconds
@@ -67,9 +76,9 @@ class settings:
         fgColor="Darkviolet",
         borderRadius=0,
         maxWidth="",
-        orientationHV=Qt.Horizontal,
+        orientationHV=Qt.Horizontal if bar_area == Qt.TopDockWidgetArea or bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
         invertTF=False,
-        dockArea=Qt.BottomDockWidgetArea,
+        dockArea=bar_area,
         pbStyle=None,
         rangeMin=0,
         rangeMax=initial_throughput_guess,
@@ -93,7 +102,7 @@ from Throughput.stopwatch import Stopwatch
 import Throughput.logging as logging
 import Throughput.logging.handlers
 
-fire_file = os.path.join(mw.pm.addonFolder(), 'Throughput/img/fire.png')
+fire_file = os.path.join(mw.pm.addonFolder(), 'Throughput', 'img', 'fire.png')
 
 _flameLabel = None
 
@@ -125,23 +134,16 @@ def getFlame(parent=None):
 
     _flameLabel = myLabel
 
-def closeTooltip():
-    global _flameLabel
-    if _flameLabel:
-        try:
-            _flameLabel.deleteLater()
-        except:
-            # already deleted as parent window closed
-            pass
-        _flameLabel = None
-
 # add compatability with the Progress Bar plugin
 try:
     import Progress_Bar
     Progress_Bar._dock = lambda x: None
     old_getMX = Progress_Bar.getMX
     Progress_Bar.getMX = lambda : 1
+    
     Progress_Bar.progressBar, _ = Progress_Bar.pb()
+    Progress_Bar.progressBar.setOrientation(Qt.Horizontal if settings.bar_area == Qt.TopDockWidgetArea or settings.bar_area == Qt.BottomDockWidgetArea else Qt.Vertical)
+    Progress_Bar.progressBar.dockArea = settings.bar_area
     Progress_Bar.getMX = old_getMX
     
     progressBars.append(Progress_Bar.progressBar)
@@ -153,7 +155,7 @@ hasDocked = False
 def dockProgressBars(state, oldState):
     global hasDocked
     if not hasDocked:
-        ProgressBar.dock(progressBars)
+        ProgressBar.dock(progressBars, settings.bar_area)
         hasDocked = True
     for bar in progressBars:
         ProgressBar.renderBar(bar, state, oldState)
@@ -294,6 +296,7 @@ class ThroughputTracker(object):
 
         pointbar_max = self.get_exponential_decay()
         self.setPointFormat(self.batchPointCount, pointbar_max)
+
 throughput = Main()
 
 #initialize bars
