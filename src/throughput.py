@@ -268,8 +268,13 @@ class ThroughputTracker(object):
             else:
                 point_format = " "
 
-        settings.pointBar.setValue(curr, point_format)
         settings.pointBar.progressBar.setMaximum(maximum)
+        # setting value larger than maximum can cause some bugs
+        if curr > maximum:
+            settings.pointBar.setValue(maximum, point_format)
+        else:
+            settings.pointBar.setValue(curr, point_format)
+        
 
         if settings.show_flame:
             global _flameLabel
