@@ -1,11 +1,7 @@
 #-*- coding: utf-8 -*-
 
-#todo: show number of cards you can cover until 4AM (or whatever time you set Anki to consider new day)
-#todo: save average to disk (?). Either that or algorithm to go back and simular batches
-#todo: add page to stats
+#todo: show number of cards you can cover until 4AM (or whatever time you set Anki to consider new day) (?)
 #todo: button to reset batch  (?)
-
-#todo: make flame gif (?)
 
 """
 Anki Add-on: Throughput Monitor
