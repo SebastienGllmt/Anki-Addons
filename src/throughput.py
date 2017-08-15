@@ -1,9 +1,9 @@
 #-*- coding: utf-8 -*-
 
 #todo: show number of cards you can cover until 4AM (or whatever time you set Anki to consider new day)
-#todo: make tracking deck-specific (?)
 #todo: save average to disk (?). Either that or algorithm to go back and simular batches
 #todo: add page to stats
+#todo: button to reset batch  (?)
 
 #todo: make flame gif (?)
 
@@ -52,37 +52,10 @@ class settings:
     countdown_colors = [(0.50, "#006400", "#008000"), (0.10, "#B8860B", "#DAA520"), (0.00, "#8B0000", "#B22222")]
     invert_timer = False
     countdown_timer_as_percentage = False # whether or not to display the time left in batch or just the % time passed
-    countdownBar = ProgressBar(
-        textColor="white",
-        bgColor=countdown_colors[0][2] if invert_timer else countdown_colors[0][1],
-        fgColor=countdown_colors[0][1] if invert_timer else countdown_colors[0][2],
-        borderRadius=0,
-        maxWidth="",
-        orientationHV=Qt.Horizontal if bar_area == Qt.TopDockWidgetArea or bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
-        invertTF=not invert_timer,
-        dockArea=bar_area,
-        pbStyle=None,
-        rangeMin=0,
-        rangeMax=timebox*1000, #use milliseconds
-        textVisible=True)
 
     points_as_percentage = True
     points_as_number = True
-    pointBar = ProgressBar(
-        textColor="white",
-        bgColor="Darkslateblue",
-        fgColor="Darkviolet",
-        borderRadius=0,
-        maxWidth="",
-        orientationHV=Qt.Horizontal if bar_area == Qt.TopDockWidgetArea or bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
-        invertTF=False,
-        dockArea=bar_area,
-        pbStyle=None,
-        rangeMin=0,
-        rangeMax=initial_throughput_guess,
-        textVisible=True)
 ############# END USER CONFIGURABLE SETTINGS #############
-progressBars = [settings.pointBar.progressBar, settings.countdownBar.progressBar]
 
 __version__ = '1.0'
 
@@ -101,7 +74,6 @@ import Throughput.logging as logging
 import Throughput.logging.handlers
 
 fire_file = os.path.join(mw.pm.addonFolder(), 'Throughput', 'img', 'fire.png')
-
 _flameLabel = None
 
 def getFlame(parent=None):
@@ -135,6 +107,7 @@ def getFlame(parent=None):
 # add compatability with the Progress Bar plugin
 try:
     import Progress_Bar
+    progress_bar_imported = True
     Progress_Bar._dock = lambda x: None
     old_getMX = Progress_Bar.getMX
     Progress_Bar.getMX = lambda : 1
@@ -143,38 +116,55 @@ try:
     Progress_Bar.progressBar.setOrientation(Qt.Horizontal if settings.bar_area == Qt.TopDockWidgetArea or settings.bar_area == Qt.BottomDockWidgetArea else Qt.Vertical)
     Progress_Bar.progressBar.dockArea = settings.bar_area
     Progress_Bar.getMX = old_getMX
-    
-    progressBars.append(Progress_Bar.progressBar)
 except ImportError:
+    progress_bar_imported = False
     pass
 
-# add all the progress bars to the UI
-hasDocked = False
-def dockProgressBars(state, oldState):
-    global hasDocked
-    if not hasDocked:
-        ProgressBar.dock(progressBars, settings.bar_area)
-        hasDocked = True
-    for bar in progressBars:
-        ProgressBar.renderBar(bar, state, oldState)
-addHook("afterStateChange", dockProgressBars)
+class ProgressBarHolder(object):
+    def __init__(self):
+        self.countdownBar = ProgressBar(
+            textColor="white",
+            bgColor=settings.countdown_colors[0][2] if settings.invert_timer else settings.countdown_colors[0][1],
+            fgColor=settings.countdown_colors[0][1] if settings.invert_timer else settings.countdown_colors[0][2],
+            borderRadius=0,
+            maxWidth="",
+            orientationHV=Qt.Horizontal if settings.bar_area == Qt.TopDockWidgetArea or settings.bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
+            invertTF=not settings.invert_timer,
+            dockArea=settings.bar_area,
+            pbStyle=None,
+            rangeMin=0,
+            rangeMax=settings.timebox*1000, #use milliseconds
+            textVisible=True)
+
+        self.pointBar = ProgressBar(
+            textColor="white",
+            bgColor="Darkslateblue",
+            fgColor="Darkviolet",
+            borderRadius=0,
+            maxWidth="",
+            orientationHV=Qt.Horizontal if settings.bar_area == Qt.TopDockWidgetArea or settings.bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
+            invertTF=False,
+            dockArea=settings.bar_area,
+            pbStyle=None,
+            rangeMin=0,
+            rangeMax=settings.initial_throughput_guess,
+            textVisible=True)
+
+        self.progress_bars = [self.countdownBar.progressBar, self.pointBar.progressBar]
+
+
+bar_holder = None
 
 def setupLog(obj, name):
     obj.log = logging.getLogger(name)
     obj.log.setLevel(logging.DEBUG)
-        
+
     logName = os.path.join(os.path.dirname(os.path.realpath(__file__)), name + '.log')
     fh = logging.handlers.RotatingFileHandler(logName, maxBytes=1e7, backupCount=5)
     fmt = logging.Formatter('%(asctime)s [%(threadName)14s:%(filename)18s:%(lineno)5s - %(funcName)30s()] %(levelname)8s: %(message)s')
     fh.setFormatter(fmt)
     obj.log.addHandler(fh)
 
-class Main(object):
-    
-    def __init__(self):
-        setupLog(self, "Throughput")
-        self.throughputTracker = ThroughputTracker()
-    
 class ThroughputTracker(object):
 
     def __init__(self):
@@ -199,8 +189,6 @@ class ThroughputTracker(object):
 
     def updateTime(self):
         time_left = settings.timebox - self.stopwatch.get_time()
-        if settings.keep_log: 
-            self.log.debug("timeleft: " + str(time_left))
         if time_left < 0:
             #update batch point history
             if self.batchPointCount > 0 or settings.penalize_idle:
@@ -209,18 +197,18 @@ class ThroughputTracker(object):
                     self.previous_batches = self.previous_batches[1:6]
                 self.batchPointCount = 0
             pointbar_max = self.get_exponential_decay()
-                
+
             self.stopwatch.reset()
             self.stopwatch.start()
 
             # readjust bars
             self.setPointFormat(0, pointbar_max)
             self.setCountdownFormat(0)
-        
+
         else:
             self.setCountdownFormat(self.stopwatch.get_time())
 
-    def setCountdownFormat(self, curr_time):
+    def setCountdownFormat(self, curr_time, force_recolor=False):
         perc_left = 1 - (curr_time / settings.timebox)
         if settings.invert_timer:
             if settings.countdown_timer_as_percentage:
@@ -240,23 +228,25 @@ class ThroughputTracker(object):
         for i, color in enumerate(settings.countdown_colors):
             if perc_left > color[0]:
                 #if we're already at this color, don't recolor
-                if i == self.countdownColorIndex:
+                if i == self.countdownColorIndex and force_recolor==False:
                     break
 
                 self.countdownColorIndex = i
-                settings.countdownBar.recolor(bgColor=color[2], fgColor=color[1])
+                bar_holder.countdownBar.recolor(bgColor=color[2], fgColor=color[1])
                 break
 
     def setCountdownFormatPerc(self, curr, perc):
-        settings.countdownBar.setValue(int(curr*1000), str(perc) + "%")
+        bar_holder.countdownBar.setValue(int(curr*1000), str(perc) + "%")
 
     def setCountdownFormatTime(self, curr, minutes, seconds):
-        settings.countdownBar.setValue(int(curr*1000), "%d:%02d" % (minutes, seconds))
+        bar_holder.countdownBar.setValue(int(curr*1000), "%d:%02d" % (minutes, seconds))
 
     def setPointFormat(self, curr, maximum):
         maximum += settings.goal_offset
         if settings.points_as_percentage:
             if settings.points_as_number:
+                if settings.keep_log: 
+                    self.log.debug("points: " + str(curr) + " : " + str(maximum) + " : " + str(curr/maximum))
                 point_format = "%d / %d (%d%%)" % (curr, maximum, int(100*curr/maximum))
             else:
                 point_format = "%d%%" % (int(100*curr/maximum))
@@ -266,13 +256,12 @@ class ThroughputTracker(object):
             else:
                 point_format = " "
 
-        settings.pointBar.progressBar.setMaximum(maximum)
+        bar_holder.pointBar.progressBar.setMaximum(maximum)
         # setting value larger than maximum can cause some bugs
         if curr > maximum:
-            settings.pointBar.setValue(maximum, point_format)
+            bar_holder.pointBar.setValue(maximum, point_format)
         else:
-            settings.pointBar.setValue(curr, point_format)
-        
+            bar_holder.pointBar.setValue(curr, point_format)
 
         if settings.show_flame:
             global _flameLabel
@@ -281,7 +270,7 @@ class ThroughputTracker(object):
             if self.batchPointCount < maximum and _flameLabel != None:
                 _flameLabel.deleteLater()
                 _flameLabel = None
-		
+
     def adjustPointCount(self, card, increment):
         if card.type >= 0 and card.type < len(settings.points_by_card_type):
             base_point = settings.points_by_card_type[card.type]
@@ -300,28 +289,74 @@ class ThroughputTracker(object):
         pointbar_max = self.get_exponential_decay()
         self.setPointFormat(self.batchPointCount, pointbar_max)
 
-throughput = Main()
+deck_map = dict()
+def GetStateForCol(repaintFormat=False):
+    global bar_holder
+
+    if bar_holder == None:
+        bar_holder = ProgressBarHolder()
+        if progress_bar_imported:
+            bar_holder.progress_bars.append(Progress_Bar.progressBar)
+        ProgressBar.dock(bar_holder.progress_bars, settings.bar_area)
+        for bar in bar_holder.progress_bars:
+            bar.hide()
+    
+    if mw.col == None:
+        return None
+
+    curr_deck = mw.col.decks.selected()
+    if curr_deck in deck_map:
+        throughput_tracker = deck_map[curr_deck]
+    else:
+        throughput_tracker = ThroughputTracker()
+        deck_map[curr_deck] = throughput_tracker
+
+    if repaintFormat:
+        throughput_tracker.setPointFormat(throughput_tracker.batchPointCount, throughput_tracker.get_exponential_decay())
+        throughput_tracker.setCountdownFormat(throughput_tracker.stopwatch.get_time(), force_recolor=True)
+
+    return throughput_tracker
 
 #initialize bars
-def initializeProgressBars(state, oldState):
-    if state == "overview":
-        throughput.throughputTracker.setPointFormat(throughput.throughputTracker.batchPointCount, throughput.throughputTracker.get_exponential_decay())
-        throughput.throughputTracker.setCountdownFormat(throughput.throughputTracker.stopwatch.get_time())
-addHook("afterStateChange", initializeProgressBars)
+def renderProgressBars(state, oldState):
+    if bar_holder == None:
+        return
 
+    if state in ["question", "answer", "review", "overview"]:
+        if oldState not in ["question", "answer", "review", "overview"]:
+            throughput_tracker = GetStateForCol(repaintFormat=True)
+            if throughput_tracker == None:
+                return
+
+            for bar in bar_holder.progress_bars:
+                bar.show()
+    else:
+        global _flameLabel
+        if _flameLabel != None:
+            _flameLabel.deleteLater()
+            _flameLabel = None
+        for bar in bar_holder.progress_bars:
+            bar.hide()
+addHook("afterStateChange", renderProgressBars)
 
 # based on Anki 2.0.45 aqt/main.py AnkiQt.onRefreshTimer
 def onRefreshTimer():
-    if settings.keep_log: 
-        throughput.log.debug(mw.state)
-    if throughput.throughputTracker.stopwatch.is_running():
-        throughput.throughputTracker.updateTime()
+    throughput_tracker = GetStateForCol()
+    if throughput_tracker == None:
+        return
+
+    if throughput_tracker.stopwatch.is_running():
+        throughput_tracker.updateTime()
 # refresh page periodically
 refreshTimer = mw.progress.timer(100, onRefreshTimer, True)
 
 ### check when user answers something
 def updateThroughputOnAnswer(x, card, ease):
-    throughput.throughputTracker.adjustPointCount(card, increment=True)
+    throughput_tracker = GetStateForCol()
+    if throughput_tracker == None:
+        return
+
+    throughput_tracker.adjustPointCount(card, increment=True)
 Scheduler.answerCard = wrap(Scheduler.answerCard, updateThroughputOnAnswer, "before")
 
 # check for undos and remove points based off of it
@@ -329,15 +364,21 @@ def updateThroughputOnUndo(x, _old):
     cardid = _old(x)
     if cardid:
         card = mw.col.getCard(cardid)
-        throughput.throughputTracker.adjustPointCount(card, increment=False)
+        throughput_tracker = GetStateForCol()
+        if throughput_tracker == None:
+            return
+
+        throughput_tracker.adjustPointCount(card, increment=False)
 _Collection.undo = wrap(_Collection.undo, updateThroughputOnUndo, "around")
 
 # stop the stopwatch when we exit reviews
 def pauseTimerOnReviewExit(state, oldState):
-    if settings.keep_log: 
-        throughput.log.debug("state: " + state)
+    throughput_tracker = GetStateForCol()
+    if throughput_tracker == None:
+        return
+
     if state in ["question", "answer", "review"]:
-        throughput.throughputTracker.stopwatch.start()
+        throughput_tracker.stopwatch.start()
     else:
-        throughput.throughputTracker.stopwatch.stop()
+        throughput_tracker.stopwatch.stop()
 addHook("afterStateChange", pauseTimerOnReviewExit)

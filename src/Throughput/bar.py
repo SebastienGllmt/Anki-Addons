@@ -138,10 +138,3 @@ class ProgressBar:
         if text:
             self.progressBar.setFormat(text)
         self.progressBar.show()
-
-    @staticmethod
-    def renderBar(bar, state, show_states):
-        if state in ["question", "answer", "review", "overview"]:
-            bar.show()
-        else:
-            bar.hide()
