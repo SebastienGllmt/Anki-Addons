@@ -66,8 +66,6 @@ from aqt.reviewer import Reviewer
 from aqt import mw
 
 from Throughput.stopwatch import Stopwatch
-import Throughput.logging as logging
-import Throughput.logging.handlers
 
 fire_file = os.path.join(mw.pm.addonFolder(), 'Throughput', 'img', 'fire.png')
 _flameLabel = None
@@ -135,20 +133,9 @@ class ProgressBarHolder(object):
 
 bar_holder = None
 
-def setupLog(obj, name):
-    obj.log = logging.getLogger(name)
-    obj.log.setLevel(logging.DEBUG)
-
-    logName = os.path.join(os.path.dirname(os.path.realpath(__file__)), name + '.log')
-    fh = logging.handlers.RotatingFileHandler(logName, maxBytes=1e7, backupCount=5)
-    fmt = logging.Formatter('%(asctime)s [%(threadName)14s:%(filename)18s:%(lineno)5s - %(funcName)30s()] %(levelname)8s: %(message)s')
-    fh.setFormatter(fmt)
-    obj.log.addHandler(fh)
-
 class ThroughputTracker(object):
 
     def __init__(self):
-        setupLog(self, "ThroughputTracker")
         self.batchPointCount = 0
         self.previous_batches = [] # stored averages
         self.stopwatch = Stopwatch()
@@ -225,8 +212,6 @@ class ThroughputTracker(object):
         maximum += settings.goal_offset
         if settings.points_as_percentage:
             if settings.points_as_number:
-                if settings.keep_log: 
-                    self.log.debug("points: " + str(curr) + " : " + str(maximum) + " : " + str(curr/maximum))
                 point_format = "%d / %d (%d%%)" % (curr, maximum, int(100*curr/maximum))
             else:
                 point_format = "%d%%" % (int(100*curr/maximum))
