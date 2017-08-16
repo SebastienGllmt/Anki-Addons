@@ -13,6 +13,10 @@ class settings:
 ############### YOU MAY EDIT THESE SETTINGS ###############
     batch_time = 5            # the number of minutes for a batch of studies
     group_for_averaging = 5   # the number of batches to average together
+
+    # how many studies have to have occured in a batch for it to be considered
+    # this is because otherwise studying just one card randomly during your free time severly impacts the graph
+    threshold = 5
 ############# END USER CONFIGURABLE SETTINGS #############
 
 import math
@@ -47,7 +51,9 @@ def new_progressGraphs(*args, **kwargs):
     result += _plot(self,
                     data,
                     "Historical Throughput",
-                    "Looks at how many cards you study in %d minutes and averages it in blocks of %d" % (settings.batch_time, settings.group_for_averaging),
+                    """Looks at how many cards you study in %d minutes and averages it in groups of %d
+                    <br>Note: There must have been more than %d reviews in %d minutes for it to count"""
+                     % (settings.batch_time, settings.group_for_averaging, settings.threshold, settings.batch_time),
                     color="#880",
                     lines = True)
 
@@ -80,7 +86,8 @@ def get_retention(self, lim, frm, to):
         if row[0] >= last_batch - settings.batch_time * 60 * 1000:
             batch_size += 1
         else:
-            munged.append(batch_size)
+            if batch_size >= settings.threshold:
+                munged.append(batch_size)
             last_batch = row[0]
             batch_size = 1
     # put in any leftover elements
