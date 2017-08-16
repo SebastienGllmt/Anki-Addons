@@ -18,4 +18,4 @@ Here is an example of me studying on a 1 minute countdown while also using the P
 
 Adds a new graph to the statistics screen that shows you your historical throughput on Anki
 
-![example](http://i.imgur.com/wCETsBH.png)
+![example](http://i.imgur.com/wlFqJ5U.png)
