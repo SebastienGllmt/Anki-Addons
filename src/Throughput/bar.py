@@ -110,9 +110,14 @@ class ProgressBar:
             return
 
         mw.setDockNestingEnabled(True)
-        prevWidget = None
         dockWidgets = [QDockWidget() for _ in barList]
         widgets = [QWidget() for _ in barList]
+
+        prevWidget = None
+        existing_widgets = [widget for widget in mw.findChildren(QDockWidget) if mw.dockWidgetArea(widget) == dockArea]
+        if len(existing_widgets) > 0:
+            prevWidget = existing_widgets[0]
+
         for i, bar in enumerate(barList):
             dock = dockWidgets[i]
             tWidget = widgets[i]

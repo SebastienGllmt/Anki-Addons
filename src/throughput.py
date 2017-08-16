@@ -100,22 +100,6 @@ def getFlame(parent=None):
 
     _flameLabel = myLabel
 
-# add compatability with the Progress Bar plugin
-try:
-    import Progress_Bar
-    progress_bar_imported = True
-    Progress_Bar._dock = lambda x: None
-    old_getMX = Progress_Bar.getMX
-    Progress_Bar.getMX = lambda : 1
-    
-    Progress_Bar.progressBar, _ = Progress_Bar.pb()
-    Progress_Bar.progressBar.setOrientation(Qt.Horizontal if settings.bar_area == Qt.TopDockWidgetArea or settings.bar_area == Qt.BottomDockWidgetArea else Qt.Vertical)
-    Progress_Bar.progressBar.dockArea = settings.bar_area
-    Progress_Bar.getMX = old_getMX
-except ImportError:
-    progress_bar_imported = False
-    pass
-
 class ProgressBarHolder(object):
     def __init__(self):
         self.countdownBar = ProgressBar(
@@ -291,8 +275,6 @@ def GetStateForCol(repaintFormat=False):
 
     if bar_holder == None:
         bar_holder = ProgressBarHolder()
-        if progress_bar_imported:
-            bar_holder.progress_bars.append(Progress_Bar.progressBar)
         ProgressBar.dock(bar_holder.progress_bars, settings.bar_area)
         for bar in bar_holder.progress_bars:
             bar.hide()
