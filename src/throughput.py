@@ -209,6 +209,7 @@ class ThroughputTracker(object):
         bar_holder.countdownBar.setValue(int(curr*1000), "%d:%02d" % (minutes, seconds))
 
     def setPointFormat(self, curr, maximum):
+        maximum = int(maximum)
         maximum += settings.goal_offset
         if settings.points_as_percentage:
             if settings.points_as_number:
