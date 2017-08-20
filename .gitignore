@@ -47,5 +47,6 @@ Temporary Items
 .apdisk
 
 src/*
+!src/true_retention_graph.py
 !src/throughput*
 src/*.log

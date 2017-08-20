@@ -19,3 +19,12 @@ Here is an example of me studying on a 1 minute countdown while also using the P
 Adds a new graph to the statistics screen that shows you your historical throughput on Anki
 
 ![example](http://i.imgur.com/wlFqJ5U.png)
+
+## True Retention Graph
+
+Creates graphs to show your retention of cards over time.
+Useful to know to adjust your card ease settings to avoid over-forgetting
+
+**Note**: This is not originally my addon. I just added some features. I will share this code with the author if they ever publish their project on Github
+
+![example](http://i.imgur.com/GrD1jiT.png)
