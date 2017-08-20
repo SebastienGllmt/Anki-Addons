@@ -14,6 +14,8 @@ class settings:
     batch_time = 5            # the number of minutes for a batch of studies
     group_for_averaging = 5   # the number of batches to average together
 
+    add_all_graphs = False # whether to generate a graph for every card type or only a single "Cumulative" graph
+
     # how many studies have to have occured in a batch for it to be considered
     # this is because otherwise studying just one card randomly during your free time severly impacts the graph
     threshold = 5
@@ -38,42 +40,81 @@ def new_progressGraphs(*args, **kwargs):
 
     last_day = -min(365 * 10, periods[self.type]) - 1
     last_day_t = (self.col.sched.dayCutoff + 24*60*60 * last_day) * 1000
-    retentions = get_retention(self, self._revlogLimit(), last_day_t, self.col.sched.dayCutoff * 1000)
+    raw_data = get_data(self, self._revlogLimit(), last_day_t, self.col.sched.dayCutoff * 1000)
+    
+    retentions = [get_retention(self, raw_data, filter_none)]
+    if settings.add_all_graphs:
+        retentions.append(get_retention(self, raw_data, filter_for_young))
+        retentions.append(get_retention(self, raw_data, filter_for_mature))
+        retentions.append(get_retention(self, raw_data, filter_for_new))
 
-    data = []
-    for i, day in enumerate(range(-len(retentions), 0)):
-        data.append((day+1, retentions[len(retentions)-i-1]))
+    graph_data = []
+    for i in range(len(retentions)):
+        data = []
+        for j, day in enumerate(range(-len(retentions[i]), 0)):
+            data.append((day+1, retentions[i][len(retentions[i])-j-1]))
+        graph_data.append(data)
 
     old = kwargs['_old']
     del kwargs['_old']
 
     result = old(*args, **kwargs)
-    result += _plot(self,
-                    data,
-                    "Historical Throughput",
-                    """Looks at how many cards you study in %d minutes and averages it in groups of %d
-                    <br>Note: There must have been more than %d reviews in %d minutes for it to count"""
-                     % (settings.batch_time, settings.group_for_averaging, settings.threshold, settings.batch_time),
-                    color="#880",
-                    lines = True)
+
+    colors=["#880", "#7c7", "#070","#00F"]
+    labels=[_("Cumulative"), _("Young"), _("Mature"),_("Learn")]
+    for i in range(len(graph_data)):
+        result += _plot(self,
+                        graph_data[i],
+                        "Historical Throughput",
+                        """Looks at how many cards you study in %d minutes and averages it in groups of %d
+                        <br>Note: There must have been more than %d reviews in %d minutes for it to count"""
+                        % (settings.batch_time, settings.group_for_averaging, settings.threshold, settings.batch_time),
+                        colors[i],
+                        labels[i],
+                        lines = True)
 
     return result
+
+###
+#  Data filters
+###
+
+def filter_for_mature(ivl, typ):
+    if typ == 0:
+        return False
+    if ivl <= 20:
+        return False
+    return True
+def filter_for_young(ivl, typ):
+    if typ == 0:
+        return False
+    if ivl <= 20:
+        return True
+    return False
+def filter_for_new(ivl, typ):
+    return typ == 0
+def filter_none(ivl, typ):
+    return True
 
 ###
 #  Calculate data for our graph
 ###
 
-def get_retention(self, lim, frm, to):
+def get_data(self, lim, frm, to):
     # limit the revlogs to only the ones in the selected deck
     if lim:
         lim = " and " + lim
     data = self.col.db.all("""
-        SELECT id 
+        SELECT id, ivl, type
         FROM revlog 
         WHERE id >= ? and id < ?""" + lim + """
         ORDER BY id DESC""",
         frm, to)
+    
+    return data
 
+def get_retention(self, data, rev_filter):
+    
     if not data:
         return []
 
@@ -83,12 +124,15 @@ def get_retention(self, lim, frm, to):
     batch_size = 0
 
     for row in data:
-        if row[0] >= last_batch - settings.batch_time * 60 * 1000:
+        revtime, ivl, typ = row
+        if not rev_filter(ivl, typ):
+            continue
+        if revtime >= last_batch - settings.batch_time * 60 * 1000:
             batch_size += 1
         else:
             if batch_size >= settings.threshold:
                 munged.append(batch_size)
-            last_batch = row[0]
+            last_batch = revtime
             batch_size = 1
     # put in any leftover elements
     if batch_size > 0:
@@ -134,18 +178,21 @@ def _round_up_max(max_val):
     return math.ceil(float(max_val)/m)*m
 
 def _plot(self, data, title, subtitle,
-          color="#f00", lines = False):
+          color, label, lines = False):
     global _num_graphs
+
     if not data:
         return ""
 
-    txt = self._title(_(title), _(subtitle))
-
-    graph_data = [dict(data=data, color=color, bars={'show': not lines}, lines={'show': lines})]
-
     max_yaxis = _round_up_max(max(y for x, y in data))
+    max_xaxis = len(data)
+
+    graph_data = [dict(data=data, color=color, bars={'show': not lines}, lines={'show': lines}, label=label)]
+
     yaxes = [dict(min=0, max=max_yaxis)]
-    xaxes = [dict(min=0, max=len(data))]
+    xaxes = [dict(min=0, max=max_xaxis)]
+
+    txt = self._title(_(title), _(subtitle))
 
     txt += _graph(
         self,
