@@ -48,39 +48,25 @@ def _round_up_min(min_val):
 
   return - _round_up_max(-min_val)
 
-def _plot(self, data, title, subtitle, bucket_size_days,
-          include_cumulative=False,
-          color="#f00", lines = False):
+def _plot(self, data, title, subtitle,
+          color, labels, lines = False):
   global _num_graphs
+  
   if not data:
     return ""
-  cumulative_total = 0
-  cumulative_data = []
-  max_yaxis = _round_up_max(max(y for x, y in data))
-  min_yaxis = _round_up_min(min(y for x, y in data))
-  for (x,y) in data:
-    cumulative_total += y
-    cumulative_data.append((x, cumulative_total))
 
-  txt = self._title(_(title), _(subtitle))
+  max_yaxis = float('-inf')
+  min_yaxis = float('inf')
+  graph_data = []
+  for i in range(len(data)):
+    max_yaxis = max(max_yaxis, _round_up_max(max(y for x, y in data[i])))
+    min_yaxis = min(min_yaxis, _round_up_min(min(y for x, y in data[i])))
 
-  graph_data = [dict(data=data, color=color, bars={'show': not lines}, lines={'show': lines})]
-
-  if include_cumulative:
-    graph_data.append(
-      dict(data=cumulative_data,
-           color=color,
-           label=_("Cumulative"),
-           yaxis=2,
-           bars={'show': False},
-           lines=dict(show=True),
-           stack=False))
+    graph_data.append(dict(data=data[i], color=color[i], bars={'show': not lines}, lines={'show': lines}, label=labels[i], stack=-i))
 
   yaxes = [dict(min=min_yaxis, max=max_yaxis)]
 
-  if include_cumulative:
-    yaxes.append(dict(min=_round_up_min(cumulative_total), max=_round_up_max(cumulative_total), position="right"))
-
+  txt = self._title(_(title), _(subtitle))
   txt += _graph(
     self,
     id="trg-%s" % _num_graphs,
@@ -94,12 +80,6 @@ def _plot(self, data, title, subtitle, bucket_size_days,
   _num_graphs += 1
 
   text_lines = []
-
-  if include_cumulative:
-    self._line(
-      text_lines,
-      _("Total"),
-      _("%(total)d ") % dict(total=cumulative_total))
 
   txt += self._lineTbl(text_lines)
 
@@ -195,19 +175,11 @@ def new_progressGraphs(*args, **kwargs):
 
   result = old(*args, **kwargs)
   result += _plot(self,
-          data_young,
-          "True retention (young)",
-          "The percentage of correct young reviews you had day per day, with days without reviews shown as a flat line.",
-          len(data_young),
-          color="#7c7",
-          lines = True)
-
-  result += _plot(self,
-          data_mature,
-          "True retention (mature)",
-          "The percentage of correct mature reviews you had day per day, with days without reviews shown as a flat line.",
-          len(data_mature),
-          color="#070",
+          [data_young, data_mature],
+          "True retention",
+          "The percentage of correct reviews you had day per day, with days without reviews shown as a flat line.",
+          color=["#7c7", "#070"],
+          labels=[_("Young"), _("Mature")],
           lines = True)
 
   return result

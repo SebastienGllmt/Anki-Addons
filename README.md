@@ -27,4 +27,4 @@ Useful to know to adjust your card ease settings to avoid over-forgetting
 
 **Note**: This is not originally my addon. I just added some features. I will share this code with the author if they ever publish their project on Github
 
-![example](http://i.imgur.com/GrD1jiT.png)
+![example](http://i.imgur.com/1i0f8Tw.png)
