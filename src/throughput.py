@@ -35,9 +35,10 @@ class settings:
     # Point bar settings
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
     exponential_weight = 0.5 # decay for exponential weighted average
-    goal_offset = 2 # how many more reviews than the exponential weighted average you hope to get this round
-    initial_throughput_guess = 15 - goal_offset # initial goal when you just started studying
-    points_by_card_type = [3,1,1] # get different amount of points based off if this card is (new, learning, due)
+    goal_offset = 2.0 # how many more reviews than the exponential weighted average you hope to get this round
+    initial_throughput_guess = 15.0 - goal_offset # initial goal when you just started studying
+    bonus_points_by_card_type = [2,0,0] # get different amount of points based off if this card is (new, learning, due)
+    show_time_till_end = True # show how much time you have until you finish the deck at this pace
 
     # area where the bars will appear. Uncomment the one you want to 
     # note: Qt.LeftDockWidgetArea and Qt.RightDockWidgetArea are not well supported
@@ -136,44 +137,127 @@ bar_holder = None
 class ThroughputTracker(object):
 
     def __init__(self):
-        self.batchPointCount = 0
-        self.previous_batches = [] # stored averages
+        self.batchPointCount = [0,0] # [raw_points, with_bonus_points]
+        self.previous_batches = [] # stored averages in format [[raw_points, with_bonus_points], ...]
         self.stopwatch = Stopwatch()
         self.countdownColorIndex = 0
+        self.cardsLeftSnapshot = 0
 
-    def get_exponential_decay(self):
-        if len(self.previous_batches) == 0:
-            return settings.initial_throughput_guess
-        return self.get_exponential_decay_i(len(self.previous_batches)-1)
-
-    def get_exponential_decay_i(self, i):
-        if i == 0:
-            return self.previous_batches[i]
-
-        node = settings.exponential_weight * self.previous_batches[i]
-        node += (1-settings.exponential_weight) * self.get_exponential_decay_i(i-1)
-        return node
-
-    def updateTime(self):
+    def update(self):
         time_left = settings.timebox - self.stopwatch.get_time()
         if time_left < 0:
             #update batch point history
-            if self.batchPointCount > 0 or settings.penalize_idle:
-                self.previous_batches.append(self.batchPointCount)
+            if self.batchPointCount[0] > 0 or settings.penalize_idle:
+                self.previous_batches.append([float(self.batchPointCount[0]), float(self.batchPointCount[1])])
                 if len(self.previous_batches) > 5:
                     self.previous_batches = self.previous_batches[1:6]
-                self.batchPointCount = 0
+                self.batchPointCount = [0,0]
             pointbar_max = self.get_exponential_decay()
 
             self.stopwatch.reset()
             self.stopwatch.start()
 
             # readjust bars
-            self.setPointFormat(0, pointbar_max)
+            self.setPointFormat([0,0], pointbar_max)
             self.setCountdownFormat(0)
 
         else:
             self.setCountdownFormat(self.stopwatch.get_time())
+
+    ### POINT BAR
+
+    def get_exponential_decay(self):
+        if len(self.previous_batches) == 0:
+            return [settings.initial_throughput_guess, settings.initial_throughput_guess]
+        return self.get_exponential_decay_i(len(self.previous_batches)-1)
+
+    def get_exponential_decay_i(self, i):
+        if i == 0:
+            return [self.previous_batches[i][0], self.previous_batches[i][1]]
+
+        node = [settings.exponential_weight * self.previous_batches[i][0],
+                settings.exponential_weight * self.previous_batches[i][1]]
+
+        next_node = self.get_exponential_decay_i(i-1)
+
+        node[0] += (1-settings.exponential_weight) * next_node[0]
+        node[1] += (1-settings.exponential_weight) * next_node[1]
+        
+        return node
+
+    def setPointFormat(self, curr, maximum):
+        time_left = self.get_time_left(maximum[0])
+
+        curr = curr[1]
+        maximum = int(maximum[1])
+        maximum += settings.goal_offset
+        if settings.points_as_percentage:
+            if settings.points_as_number:
+                point_format = "%d / %d (%d%%)" % (curr, maximum, int(100*curr/maximum))
+            else:
+                point_format = "%d%%" % (int(100*curr/maximum))
+        else:
+            if settings.points_as_number:
+                point_format = "%d / %d" % (curr, maximum)
+            else:
+                point_format = " "
+
+        if settings.show_time_till_end:
+            if point_format != " " and time_left != "":
+                point_format += " - "
+            point_format += time_left
+
+        bar_holder.pointBar.progressBar.setMaximum(maximum)
+        # setting value larger than maximum can cause some bugs
+        if curr > maximum:
+            bar_holder.pointBar.setValue(maximum, point_format)
+        else:
+            bar_holder.pointBar.setValue(curr, point_format)
+
+        if settings.show_flame:
+            global _flameLabel
+            if self.batchPointCount[1] >= maximum and _flameLabel == None:
+                getFlame()
+            if self.batchPointCount[1] < maximum and _flameLabel != None:
+                _flameLabel.deleteLater()
+                _flameLabel = None
+
+    def adjustPointCount(self, card, increment):
+        if card.type >= 0 and card.type < len(settings.bonus_points_by_card_type):
+            bonus_point = settings.bonus_points_by_card_type[card.type]
+        else:
+            # this shouldn't happen unless the user has a different addon that messes with card types and didn't change the config for this addon
+            bonus_point = 0
+
+        if increment:
+            self.batchPointCount[0] += 1
+            self.batchPointCount[1] += 1 + bonus_point
+        else:
+            self.batchPointCount[0] -= 1
+            self.batchPointCount[1] -= (1 + bonus_point)
+            # this can happen if you undo cards that were part of a previous batch
+            if self.batchPointCount[0] < 0:
+                self.batchPointCount[0] = 0
+            if self.batchPointCount[1] < 0:
+                self.batchPointCount[1] = 0
+
+        pointbar_max = self.get_exponential_decay()
+        self.setPointFormat(self.batchPointCount, pointbar_max)
+
+    def get_time_left(self, maximum):
+        """ get time left until we complete all our reviews assuming current pace"""
+        if settings.show_time_till_end:
+            if self.cardsLeftSnapshot == 0 or maximum == 0:
+                return ""
+
+            timebox_left = self.cardsLeftSnapshot / float(maximum)
+            seconds_left = int(timebox_left * settings.timebox)
+            if seconds_left >= 24*60*60:
+                return ">1d"
+            else:
+                return time.strftime('%H:%M:%S', time.gmtime(seconds_left))
+
+    ### COUNTDOWN BAR
 
     def setCountdownFormat(self, curr_time, force_recolor=False):
         perc_left = 1 - (curr_time / settings.timebox)
@@ -208,52 +292,26 @@ class ThroughputTracker(object):
     def setCountdownFormatTime(self, curr, minutes, seconds):
         bar_holder.countdownBar.setValue(int(curr*1000), "%d:%02d" % (minutes, seconds))
 
-    def setPointFormat(self, curr, maximum):
-        maximum = int(maximum)
-        maximum += settings.goal_offset
-        if settings.points_as_percentage:
-            if settings.points_as_number:
-                point_format = "%d / %d (%d%%)" % (curr, maximum, int(100*curr/maximum))
-            else:
-                point_format = "%d%%" % (int(100*curr/maximum))
-        else:
-            if settings.points_as_number:
-                point_format = "%d / %d" % (curr, maximum)
-            else:
-                point_format = " "
+def _getNumCardsLeft():
+    """ Get the number of new / lrn / rev cards you have left for the day """
+    if not settings.show_time_till_end:
+        return 0
 
-        bar_holder.pointBar.progressBar.setMaximum(maximum)
-        # setting value larger than maximum can cause some bugs
-        if curr > maximum:
-            bar_holder.pointBar.setValue(maximum, point_format)
-        else:
-            bar_holder.pointBar.setValue(curr, point_format)
+    active_decks = mw.col.decks.active()
+    if len(active_decks) == 0:
+        return 0
 
-        if settings.show_flame:
-            global _flameLabel
-            if self.batchPointCount >= maximum and _flameLabel == None:
-                getFlame()
-            if self.batchPointCount < maximum and _flameLabel != None:
-                _flameLabel.deleteLater()
-                _flameLabel = None
+    rev = lrn = nu = 0
 
-    def adjustPointCount(self, card, increment):
-        if card.type >= 0 and card.type < len(settings.points_by_card_type):
-            base_point = settings.points_by_card_type[card.type]
-        else:
-            # this shouldn't happen unless the user has a different addon that messes with card types and didn't change the config for this addon
-            base_point = 1
+    left = 0
+    # get number of cards
+    for tree in [deck for deck in mw.col.sched.deckDueList() if deck[1] in active_decks]:
+        rev += tree[2]
+        lrn += tree[3]
+        nu += tree[4]
+        left += nu+lrn+rev
 
-        if increment:
-            self.batchPointCount += base_point
-        else:
-            self.batchPointCount -= base_point
-            # this can happen if you undo cards that were part of a previous batch
-            if self.batchPointCount < 0:
-                self.batchPointCount = 0
-
-        pointbar_max = self.get_exponential_decay()
-        self.setPointFormat(self.batchPointCount, pointbar_max)
+    return left
 
 deck_map = dict()
 def GetStateForCol(repaintFormat=False):
@@ -274,6 +332,8 @@ def GetStateForCol(repaintFormat=False):
     else:
         throughput_tracker = ThroughputTracker()
         deck_map[curr_deck] = throughput_tracker
+
+    throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
 
     if repaintFormat:
         throughput_tracker.setPointFormat(throughput_tracker.batchPointCount, throughput_tracker.get_exponential_decay())
@@ -305,12 +365,15 @@ addHook("afterStateChange", renderProgressBars)
 
 # based on Anki 2.0.45 aqt/main.py AnkiQt.onRefreshTimer
 def onRefreshTimer():
+    if mw.state not in ["question", "answer", "review"]:
+        return
+
     throughput_tracker = GetStateForCol()
     if throughput_tracker == None:
         return
 
     if throughput_tracker.stopwatch.is_running():
-        throughput_tracker.updateTime()
+        throughput_tracker.update()
 # refresh page periodically
 refreshTimer = mw.progress.timer(100, onRefreshTimer, True)
 
@@ -319,6 +382,8 @@ def updateThroughputOnAnswer(x, card, ease):
     throughput_tracker = GetStateForCol()
     if throughput_tracker == None:
         return
+
+    throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
 
     throughput_tracker.adjustPointCount(card, increment=True)
 Scheduler.answerCard = wrap(Scheduler.answerCard, updateThroughputOnAnswer, "before")
@@ -331,6 +396,8 @@ def updateThroughputOnUndo(x, _old):
         throughput_tracker = GetStateForCol()
         if throughput_tracker == None:
             return
+
+        throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
 
         throughput_tracker.adjustPointCount(card, increment=False)
 _Collection.undo = wrap(_Collection.undo, updateThroughputOnUndo, "around")
