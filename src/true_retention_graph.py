@@ -107,8 +107,8 @@ def get_retention(self, lim, frm, min_ivl, max_ivl, to = ""):
   off = frm % (86400 * 1000)
   data = self.col.db.all("""
   select
-  sum(case when ease = 1 and type == 1 and lastIvl > ? and lastIvl <= ? then 1 else 0 end), /* flunked */
-  sum(case when ease > 1 and type == 1 and ivl > ? and ivl <= ? then 1 else 0 end), /* passed */
+  sum(case when ease = 1 and lastIvl > ? and lastIvl <= ? then 1 else 0 end), /* flunked */
+  sum(case when ease > 1 and ivl > ? and ivl <= ? then 1 else 0 end), /* passed */
   cast(((? + id) / 86400 / 1000) as int) as `day`
   from revlog where id > ?""" + _to + lim + " group by day", min_ivl, max_ivl, min_ivl, max_ivl, -off, frm)
 
