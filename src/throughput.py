@@ -30,7 +30,7 @@ class settings:
 
     ### PROGRESS BAR SETTINGS ###
 
-    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
+    timebox = 15              # size (in seconds) of a study batch to consider for throughput
 
     # Point bar settings
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
@@ -46,7 +46,7 @@ class settings:
     bar_area = Qt.BottomDockWidgetArea
     
     #format: (show until we reach this percentage left in countdown, background color, foreground color)
-    countdown_colors = [(0.50, "#006400", "#008000"), (0.10, "#B8860B", "#DAA520"), (0.00, "#8B0000", "#B22222")]
+    countdown_colors = [(0.50, "#44722a", "#5cb82a"), (0.10, "#72652a", "#b89e2a"), (0.00, "#722a44", "#b82a5c")]
     invert_timer = False
     countdown_timer_as_percentage = False # whether or not to display the time left in batch or just the % time passed
 
@@ -117,8 +117,8 @@ class ProgressBarHolder(object):
 
         self.pointBar = ProgressBar(
             textColor="white",
-            bgColor="Darkslateblue",
-            fgColor="Darkviolet",
+            bgColor="#582A72",
+            fgColor="#862ab8",
             borderRadius=0,
             maxWidth="",
             orientationHV=Qt.Horizontal if settings.bar_area == Qt.TopDockWidgetArea or settings.bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
