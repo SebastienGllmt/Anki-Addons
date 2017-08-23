@@ -59,8 +59,12 @@ def _plot(self, data, title, subtitle,
   min_yaxis = float('inf')
   graph_data = []
   for i in range(len(data)):
-    max_yaxis = max(max_yaxis, _round_up_max(max(y for x, y in data[i])))
-    min_yaxis = min(min_yaxis, _round_up_min(min(y for x, y in data[i])))
+    if data[i]:
+      max_yaxis = max(max_yaxis, _round_up_max(max(y for x, y in data[i])))
+      min_yaxis = min(min_yaxis, _round_up_min(min(y for x, y in data[i])))
+    else:
+      max_yaxis = 100.0
+      min_yaxis = 0.0
 
     graph_data.append(dict(data=data[i], color=color[i], bars={'show': not lines}, lines={'show': lines}, label=labels[i], stack=-i))
 
@@ -119,6 +123,11 @@ def get_retention(self, lim, frm, min_ivl, max_ivl, to = ""):
     day = day or 0
     flunked = flunked or 0
     passed = passed or 0
+    
+    for i in range(day - last_day - 1):
+      munged.append([-1, 0, 0])
+    last_day = day
+
     if flunked + passed < settings.daily_minimum:
       continue
     try:
@@ -126,14 +135,9 @@ def get_retention(self, lim, frm, min_ivl, max_ivl, to = ""):
     except ZeroDivisionError:
       temp = "-1"
 
-    for i in range(day - last_day - 1):
-      munged.append([-1, 0, 0])
-
-    last_day = day
     munged.append([temp, flunked, passed])
 
   return munged
-
 
 def todayStats_new(self):
   global swapped
@@ -145,6 +149,7 @@ def todayStats_new(self):
 
 def process_data(last_day, retentions):
   data = []
+
   for day in range(last_day, 0):
     retention = retentions[day][0]
     retention = float(retention)
