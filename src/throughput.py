@@ -28,30 +28,42 @@ class settings:
     show_flame = True
     flame_height = 100 # height in pixels (width is automatically adjusted to maintain aspect ratio)
 
+    ### HISTORICAL THROUGHPUT SETTINGS ###
+
+    threshold_for_batch = 5 # how many studies have to occur for the batch to be considered for historical throughput average
+
     ### PROGRESS BAR SETTINGS ###
 
-    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
-
-    # Point bar settings
-    penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
-    exponential_weight = 0.5 # decay for exponential weighted average
-    goal_offset = 2.0 # how many more reviews than the exponential weighted average you hope to get this round
-    initial_throughput_guess = 15.0 - goal_offset # initial goal when you just started studying
-    bonus_points_by_card_type = [2,0,0] # get different amount of points based off if this card is (new, learning, due)
-    show_time_till_end = True # show how much time you have until you finish the deck at this pace
-
-    # area where the bars will appear. Uncomment the one you want to 
-    # note: Qt.LeftDockWidgetArea and Qt.RightDockWidgetArea are not well supported
-    #bar_area = Qt.TopDockWidgetArea
-    bar_area = Qt.BottomDockWidgetArea
+    # Batch Countdown bar settings
+    timebox = 5*60              # size (in seconds) of a study batch to consider for 
     
     #format: (show until we reach this percentage left in countdown, background color, foreground color)
     countdown_colors = [(0.50, "#44722a", "#5cb82a"), (0.10, "#72652a", "#b89e2a"), (0.00, "#722a44", "#b82a5c")]
     invert_timer = False
     countdown_timer_as_percentage = False # whether or not to display the time left in batch or just the % time passed
 
+    # Point bar settings
+    penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
+    exponential_weight = 0.5 # decay for exponential weighted average
+    number_batches_to_keep = 5 # number of batches to use to calculate predicted 
+    
     points_as_percentage = True
     points_as_number = True
+
+    goal_offset = 2.0 # how many more reviews than the exponential weighted average you hope to get this round
+    initial_throughput_guess = 15.0 - goal_offset # initial goal when you just started on a deck with no prior study history
+
+    bonus_points_by_card_type = [2,0,0,0] # get different amount of points based off if this card is (new, learning, due)
+
+    # Study Time Left bar settings
+    show_time_till_end = True # show how much time you have until you finish the deck at this 
+
+    # General bar settings
+
+    # area where the bars will appear. Uncomment the one you want to 
+    # note: Qt.LeftDockWidgetArea and Qt.RightDockWidgetArea are not well supported
+    #bar_area = Qt.TopDockWidgetArea
+    bar_area = Qt.BottomDockWidgetArea
 ############# END USER CONFIGURABLE SETTINGS #############
 
 __version__ = '1.0'
@@ -167,8 +179,8 @@ class ThroughputTracker(object):
             #update batch point history
             if self.batchPointCount[0] > 0 or settings.penalize_idle:
                 self.previous_batches.append([float(self.batchPointCount[0]), float(self.batchPointCount[1])])
-                if len(self.previous_batches) > 5:
-                    self.previous_batches = self.previous_batches[1:6]
+                if len(self.previous_batches) > settings.number_batches_to_keep:
+                    self.previous_batches = self.previous_batches[1:1+settings.number_batches_to_keep]
                 self.batchPointCount = [0,0]
             throughput = self.get_exponential_decay()
 
@@ -357,6 +369,7 @@ def GetStateForCol(repaintFormat=False):
         throughput_tracker = deck_map[curr_deck]
     else:
         throughput_tracker = ThroughputTracker()
+        throughput_tracker.previous_batches = _getPredictedThroughputForDeck(curr_deck)
         deck_map[curr_deck] = throughput_tracker
 
     throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
@@ -368,6 +381,49 @@ def GetStateForCol(repaintFormat=False):
         throughput_tracker.setCountdownFormat(throughput_tracker.batchStopwatch.get_time(), force_recolor=True)
 
     return throughput_tracker
+
+def _getPredictedThroughputForDeck(curr_deck):
+    """ For our initial guess of the user throughput, look back at historical data for the deck"""
+
+    # limit the revlogs to only the ones in the selected deck
+    limit = ("cid in (select id from cards where did in (%s)) " % str(curr_deck))
+    data = mw.col.db.all("""
+        SELECT id, type
+        FROM revlog 
+        WHERE """ + limit + """
+        ORDER BY id DESC limit 1000 """)
+
+    if not data:
+        return []
+
+    munged = []
+    last_batch = data[0][0]
+    batch_size = [0 for i in range(len(settings.bonus_points_by_card_type)+1)]
+
+    for row in data:
+        revtime, typ = row
+        if revtime < last_batch - settings.timebox * 1000:
+            if sum(batch_size) >= settings.threshold_for_batch:
+                munged.append(batch_size)
+            batch_size = [0 for i in range(len(settings.bonus_points_by_card_type)+1)]
+            last_batch = revtime
+            if len(munged) >= settings.number_batches_to_keep:
+                break
+
+        if typ < len(settings.bonus_points_by_card_type):
+            batch_size[typ] += 1
+        else:
+            batch_size[len(batch_size)-1] += 1
+    # put in any leftover elements
+    if sum(batch_size) > 0 and sum(batch_size) >= settings.threshold_for_batch:
+        munged.append(batch_size)
+
+    result = []
+    for batch in munged:
+        bonus_points =  [batch[i]*settings.bonus_points_by_card_type[i] for i in range(len(settings.bonus_points_by_card_type))]
+        result.append([sum(batch), sum(batch)+sum(bonus_points)])
+
+    return result
 
 #initialize bars
 def renderProgressBars(state, oldState):
