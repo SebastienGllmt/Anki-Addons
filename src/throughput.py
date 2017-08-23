@@ -30,7 +30,7 @@ class settings:
 
     ### PROGRESS BAR SETTINGS ###
 
-    timebox = 15              # size (in seconds) of a study batch to consider for throughput
+    timebox = 5*60              # size (in seconds) of a study batch to consider for throughput
 
     # Point bar settings
     penalize_idle = False  # If you got 0 points in batch, whether or not we should count it
@@ -101,7 +101,7 @@ def getFlame(parent=None):
 
 class ProgressBarHolder(object):
     def __init__(self):
-        self.countdownBar = ProgressBar(
+        self.batchCountdownBar = ProgressBar(
             textColor="white",
             bgColor=settings.countdown_colors[0][2] if settings.invert_timer else settings.countdown_colors[0][1],
             fgColor=settings.countdown_colors[0][1] if settings.invert_timer else settings.countdown_colors[0][2],
@@ -113,6 +113,20 @@ class ProgressBarHolder(object):
             pbStyle=None,
             rangeMin=0,
             rangeMax=settings.timebox*1000, #use milliseconds
+            textVisible=True)
+
+        self.studyTimeLeftBar = ProgressBar(
+            textColor="white",
+            bgColor="#584cbf",
+            fgColor="#4539d1",
+            borderRadius=0,
+            maxWidth="",
+            orientationHV=Qt.Horizontal if settings.bar_area == Qt.TopDockWidgetArea or settings.bar_area == Qt.BottomDockWidgetArea else Qt.Vertical,
+            invertTF=False,
+            dockArea=settings.bar_area,
+            pbStyle=None,
+            rangeMin=0,
+            rangeMax=0,
             textVisible=True)
 
         self.pointBar = ProgressBar(
@@ -129,8 +143,10 @@ class ProgressBarHolder(object):
             rangeMax=settings.initial_throughput_guess,
             textVisible=True)
 
-        self.progress_bars = [self.countdownBar.progressBar, self.pointBar.progressBar]
-
+        if settings.show_time_till_end:
+            self.progress_bars = [self.batchCountdownBar.progressBar, self.studyTimeLeftBar.progressBar, self.pointBar.progressBar]
+        else:
+            self.progress_bars = [self.batchCountdownBar.progressBar, self.pointBar.progressBar]
 
 bar_holder = None
 
@@ -139,12 +155,14 @@ class ThroughputTracker(object):
     def __init__(self):
         self.batchPointCount = [0,0] # [raw_points, with_bonus_points]
         self.previous_batches = [] # stored averages in format [[raw_points, with_bonus_points], ...]
-        self.stopwatch = Stopwatch()
+        self.batchStopwatch = Stopwatch()
+        self.studyTimeStopwatch = Stopwatch()
         self.countdownColorIndex = 0
         self.cardsLeftSnapshot = 0
 
     def update(self):
-        time_left = settings.timebox - self.stopwatch.get_time()
+        time_left = settings.timebox - self.batchStopwatch.get_time()
+
         if time_left < 0:
             #update batch point history
             if self.batchPointCount[0] > 0 or settings.penalize_idle:
@@ -152,17 +170,45 @@ class ThroughputTracker(object):
                 if len(self.previous_batches) > 5:
                     self.previous_batches = self.previous_batches[1:6]
                 self.batchPointCount = [0,0]
-            pointbar_max = self.get_exponential_decay()
+            throughput = self.get_exponential_decay()
 
-            self.stopwatch.reset()
-            self.stopwatch.start()
+            self.batchStopwatch.reset()
+            self.batchStopwatch.start()
 
             # readjust bars
-            self.setPointFormat([0,0], pointbar_max)
+            self.setPointFormat([0,0], throughput)
             self.setCountdownFormat(0)
 
         else:
-            self.setCountdownFormat(self.stopwatch.get_time())
+            self.setCountdownFormat(self.batchStopwatch.get_time())
+            throughput = self.get_exponential_decay()
+
+        if settings.show_time_till_end:
+            self.setStudyTimeLeftFormat(throughput[0])
+
+    ### TIME LEFT BAR
+
+    def setStudyTimeLeftFormat(self, predicted_throughput):
+        if not settings.show_time_till_end:
+            return
+
+        seconds_left, time_string = self.get_time_left(predicted_throughput)
+
+        granularity = 1000 # setValue can only take an int as the first argument. Multiplying everything gives us finer granularity on the value of the bar
+        bar_holder.studyTimeLeftBar.progressBar.setMaximum((seconds_left + self.studyTimeStopwatch.get_time())*granularity)
+        bar_holder.studyTimeLeftBar.setValue(seconds_left*granularity, time_string)
+
+    def get_time_left(self, throughput):
+        """ get time left until we complete all our reviews assuming current pace"""
+        if self.cardsLeftSnapshot == 0 or throughput == 0:
+            return ""
+
+        timebox_left = self.cardsLeftSnapshot / float(throughput)
+        seconds_left = timebox_left * settings.timebox
+        if seconds_left >= 24*60*60:
+            return [seconds_left, ">1d"]
+        else:
+            return [seconds_left, time.strftime('%H:%M:%S', time.gmtime(int(seconds_left)))]
 
     ### POINT BAR
 
@@ -186,8 +232,6 @@ class ThroughputTracker(object):
         return node
 
     def setPointFormat(self, curr, maximum):
-        time_left = self.get_time_left(maximum[0])
-
         curr = curr[1]
         maximum = int(maximum[1])
         maximum += settings.goal_offset
@@ -201,11 +245,6 @@ class ThroughputTracker(object):
                 point_format = "%d / %d" % (curr, maximum)
             else:
                 point_format = " "
-
-        if settings.show_time_till_end:
-            if point_format != " " and time_left != "":
-                point_format += " - "
-            point_format += time_left
 
         bar_holder.pointBar.progressBar.setMaximum(maximum)
         # setting value larger than maximum can cause some bugs
@@ -244,19 +283,6 @@ class ThroughputTracker(object):
         pointbar_max = self.get_exponential_decay()
         self.setPointFormat(self.batchPointCount, pointbar_max)
 
-    def get_time_left(self, maximum):
-        """ get time left until we complete all our reviews assuming current pace"""
-        if settings.show_time_till_end:
-            if self.cardsLeftSnapshot == 0 or maximum == 0:
-                return ""
-
-            timebox_left = self.cardsLeftSnapshot / float(maximum)
-            seconds_left = int(timebox_left * settings.timebox)
-            if seconds_left >= 24*60*60:
-                return ">1d"
-            else:
-                return time.strftime('%H:%M:%S', time.gmtime(seconds_left))
-
     ### COUNTDOWN BAR
 
     def setCountdownFormat(self, curr_time, force_recolor=False):
@@ -283,14 +309,14 @@ class ThroughputTracker(object):
                     break
 
                 self.countdownColorIndex = i
-                bar_holder.countdownBar.recolor(bgColor=color[2], fgColor=color[1])
+                bar_holder.batchCountdownBar.recolor(bgColor=color[2], fgColor=color[1])
                 break
 
     def setCountdownFormatPerc(self, curr, perc):
-        bar_holder.countdownBar.setValue(int(curr*1000), str(perc) + "%")
+        bar_holder.batchCountdownBar.setValue(int(curr*1000), str(perc) + "%")
 
     def setCountdownFormatTime(self, curr, minutes, seconds):
-        bar_holder.countdownBar.setValue(int(curr*1000), "%d:%02d" % (minutes, seconds))
+        bar_holder.batchCountdownBar.setValue(int(curr*1000), "%d:%02d" % (minutes, seconds))
 
 def _getNumCardsLeft():
     """ Get the number of new / lrn / rev cards you have left for the day """
@@ -336,8 +362,10 @@ def GetStateForCol(repaintFormat=False):
     throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
 
     if repaintFormat:
-        throughput_tracker.setPointFormat(throughput_tracker.batchPointCount, throughput_tracker.get_exponential_decay())
-        throughput_tracker.setCountdownFormat(throughput_tracker.stopwatch.get_time(), force_recolor=True)
+        throughput = throughput_tracker.get_exponential_decay()
+        throughput_tracker.setStudyTimeLeftFormat(throughput[0])
+        throughput_tracker.setPointFormat(throughput_tracker.batchPointCount, throughput)
+        throughput_tracker.setCountdownFormat(throughput_tracker.batchStopwatch.get_time(), force_recolor=True)
 
     return throughput_tracker
 
@@ -372,7 +400,7 @@ def onRefreshTimer():
     if throughput_tracker == None:
         return
 
-    if throughput_tracker.stopwatch.is_running():
+    if throughput_tracker.batchStopwatch.is_running():
         throughput_tracker.update()
 # refresh page periodically
 refreshTimer = mw.progress.timer(100, onRefreshTimer, True)
@@ -409,7 +437,9 @@ def pauseTimerOnReviewExit(state, oldState):
         return
 
     if state in ["question", "answer", "review"]:
-        throughput_tracker.stopwatch.start()
+        throughput_tracker.batchStopwatch.start()
+        throughput_tracker.studyTimeStopwatch.start()
     else:
-        throughput_tracker.stopwatch.stop()
+        throughput_tracker.batchStopwatch.stop()
+        throughput_tracker.studyTimeStopwatch.reset()
 addHook("afterStateChange", pauseTimerOnReviewExit)
