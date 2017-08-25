@@ -49,4 +49,5 @@ Temporary Items
 src/*
 !src/true_retention_graph.py
 !src/throughput*
+!src/studyahead_audio*
 src/*.log
