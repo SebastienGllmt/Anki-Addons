@@ -56,6 +56,7 @@ class settings:
     bonus_points_by_card_type = [2,0,0,0] # get different amount of points based off if this card is (new, learning, due)
 
     # Study Time Left bar settings
+    include_all_study_time_for_day = True # whether to include the entire day's worth of study in the bar or just the current review
     show_time_till_end = True # show how much time you have until you finish the deck at this 
 
     # General bar settings
@@ -74,7 +75,7 @@ import time
 from anki.collection import _Collection
 from anki.hooks import wrap, addHook, remHook, runHook
 from anki.sched import Scheduler
-from anki.utils import json
+from anki.utils import json, ids2str
 from aqt.reviewer import Reviewer
 from aqt import mw
 
@@ -169,6 +170,8 @@ class ThroughputTracker(object):
         self.previous_batches = [] # stored averages in format [[raw_points, with_bonus_points], ...]
         self.batchStopwatch = Stopwatch()
         self.studyTimeStopwatch = Stopwatch()
+        self.currentAnswerStopwatch = Stopwatch()
+        self.dailyStudyTime = 0
         self.countdownColorIndex = 0
         self.cardsLeftSnapshot = 0
 
@@ -204,23 +207,21 @@ class ThroughputTracker(object):
         if not settings.show_time_till_end:
             return
 
-        seconds_left, time_string = self.get_time_left(predicted_throughput)
+        # get time left until we complete all our reviews assuming current pace
+        if self.cardsLeftSnapshot == 0 or predicted_throughput == 0:
+            time_string = ""
+            seconds_left = 0
+        else:
+            timebox_left = self.cardsLeftSnapshot / float(predicted_throughput)
+            seconds_left = timebox_left * settings.timebox
+            if seconds_left >= 24*60*60:
+                time_string = ">1d"
+            else:
+                time_string = time.strftime('%H:%M:%S', time.gmtime(int(seconds_left) - int(self.currentAnswerStopwatch.get_time())))
 
         granularity = 1000 # setValue can only take an int as the first argument. Multiplying everything gives us finer granularity on the value of the bar
-        bar_holder.studyTimeLeftBar.progressBar.setMaximum((seconds_left + self.studyTimeStopwatch.get_time())*granularity)
-        bar_holder.studyTimeLeftBar.setValue(seconds_left*granularity, time_string)
-
-    def get_time_left(self, throughput):
-        """ get time left until we complete all our reviews assuming current pace"""
-        if self.cardsLeftSnapshot == 0 or throughput == 0:
-            return ""
-
-        timebox_left = self.cardsLeftSnapshot / float(throughput)
-        seconds_left = timebox_left * settings.timebox
-        if seconds_left >= 24*60*60:
-            return [seconds_left, ">1d"]
-        else:
-            return [seconds_left, time.strftime('%H:%M:%S', time.gmtime(int(seconds_left)))]
+        bar_holder.studyTimeLeftBar.progressBar.setMaximum(((seconds_left + self.studyTimeStopwatch.get_time())*granularity) + self.dailyStudyTime)
+        bar_holder.studyTimeLeftBar.setValue((seconds_left*granularity) - self.currentAnswerStopwatch.get_time(), time_string)
 
     ### POINT BAR
 
@@ -369,12 +370,13 @@ def GetStateForCol(repaintFormat=False):
         throughput_tracker = deck_map[curr_deck]
     else:
         throughput_tracker = ThroughputTracker()
-        throughput_tracker.previous_batches = _getPredictedThroughputForDeck(curr_deck)
+        throughput_tracker.previous_batches = _getPredictedThroughputForDeck(mw.col.decks.active())
         deck_map[curr_deck] = throughput_tracker
 
     throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
 
     if repaintFormat:
+        throughput_tracker.dailyStudyTime = getDailyStudyTime(mw.col.decks.active())
         throughput = throughput_tracker.get_exponential_decay()
         throughput_tracker.setStudyTimeLeftFormat(throughput[0])
         throughput_tracker.setPointFormat(throughput_tracker.batchPointCount, throughput)
@@ -386,7 +388,7 @@ def _getPredictedThroughputForDeck(curr_deck):
     """ For our initial guess of the user throughput, look back at historical data for the deck"""
 
     # limit the revlogs to only the ones in the selected deck
-    limit = ("cid in (select id from cards where did in (%s)) " % str(curr_deck))
+    limit = ("cid in (select id from cards where did in %s)" % ids2str(curr_deck))
     data = mw.col.db.all("""
         SELECT id, type
         FROM revlog 
@@ -425,6 +427,21 @@ def _getPredictedThroughputForDeck(curr_deck):
 
     return result
 
+def getDailyStudyTime(curr_deck):
+    """ Get how much time we've studied so far today on the current deck"""
+
+    # limit the revlogs to only the ones in the selected deck
+    one_day = 86400
+    cutoff = (mw.col.sched.dayCutoff - one_day)*1000
+    limit = ("cid in (select id from cards where did in %s) " % ids2str(curr_deck))
+    data = mw.col.db.list("""
+        SELECT time
+        FROM revlog 
+        WHERE id > %d AND %s
+        ORDER BY id DESC limit 1000 """ % (cutoff, limit))
+
+    return sum(data)
+
 #initialize bars
 def renderProgressBars(state, oldState):
     if bar_holder == None:
@@ -436,6 +453,7 @@ def renderProgressBars(state, oldState):
             if throughput_tracker == None:
                 return
 
+            throughput_tracker.dailyStudyTime = getDailyStudyTime(mw.col.decks.active())
             for bar in bar_holder.progress_bars:
                 bar.show()
     else:
@@ -468,7 +486,8 @@ def updateThroughputOnAnswer(x, card, ease):
         return
 
     throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
-
+    throughput_tracker.currentAnswerStopwatch.reset()
+    throughput_tracker.currentAnswerStopwatch.start()
     throughput_tracker.adjustPointCount(card, increment=True)
 Scheduler.answerCard = wrap(Scheduler.answerCard, updateThroughputOnAnswer, "before")
 
@@ -495,7 +514,9 @@ def pauseTimerOnReviewExit(state, oldState):
     if state in ["question", "answer", "review"]:
         throughput_tracker.batchStopwatch.start()
         throughput_tracker.studyTimeStopwatch.start()
+        throughput_tracker.currentAnswerStopwatch.start()
     else:
         throughput_tracker.batchStopwatch.stop()
         throughput_tracker.studyTimeStopwatch.reset()
+        throughput_tracker.currentAnswerStopwatch.reset()
 addHook("afterStateChange", pauseTimerOnReviewExit)
