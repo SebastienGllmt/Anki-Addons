@@ -73,12 +73,12 @@ def export_audio(output_folder, field_names, model_ids, cards_per_batch, num_bat
         output_file = os.path.join(output_folder,"batch%d.mp3" % batch_id)
         audio_list_tmp_file = namedtmp("studyahead_audio_list.txt")
 
-        separator_audio = os.path.join(mw.pm.addonFolder(), 'Studyahead_Audio', 'file_seperator.mp3')
+        separator_audio = os.path.join(mw.pm.addonFolder(), 'Studyahead_Audio', 'file_separator.mp3')
         with codecs.open(audio_list_tmp_file, "w", "utf-8") as f:
             for i, audio_file in enumerate(audio_files_in_batch):
                 for j in range(num_loops):
                     f.write("file '%s'\n" % os.path.relpath(audio_file, os.path.dirname(audio_list_tmp_file)).replace("\\","/"))
-                if i < len(audio_files_in_batch)-1 and include_separator:
+                if i < len(audio_files_in_batch) and include_separator:
                     f.write("file '%s'\n" % os.path.relpath(separator_audio, os.path.dirname(audio_list_tmp_file)).replace("\\","/"))
 
         output_command = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", audio_list_tmp_file.replace("\\","/"), "-vcodec", "copy", output_file]
@@ -88,7 +88,7 @@ def export_audio(output_folder, field_names, model_ids, cards_per_batch, num_bat
 def open_settings_ui():
     "Open UI for selecting the settings"
     # TODO: make the UI
-    out_dir = "C:/Users/Sebas/Desktop/test"
+    out_dir = "E:\AudioOut"
     export_audio(out_dir, ["Audio"], [1484037039341],10,3,3, True)
     showInfo("Audio exported to {}".format(out_dir))
 
