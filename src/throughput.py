@@ -220,7 +220,7 @@ class ThroughputTracker(object):
 
         if seconds_left < self.currentAnswerStopwatch.get_time():
             time_string = "~0"
-            bar_holder.studyTimeLeftBar.setValue(0)
+            bar_holder.studyTimeLeftBar.setValue(0, time_string)
             return
 
         if seconds_left >= 24*60*60:
