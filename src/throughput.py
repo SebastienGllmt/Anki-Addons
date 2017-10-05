@@ -214,15 +214,22 @@ class ThroughputTracker(object):
         else:
             timebox_left = self.cardsLeftSnapshot / float(predicted_throughput)
             seconds_left = timebox_left * settings.timebox
-            if seconds_left >= 24*60*60:
-                time_string = ">1d"
-            else:
-                time_string = time.strftime('%H:%M:%S', time.gmtime(int(seconds_left) - int(self.currentAnswerStopwatch.get_time())))
-
+	
         granularity = 1000 # setValue can only take an int as the first argument. Multiplying everything gives us finer granularity on the value of the bar
         bar_holder.studyTimeLeftBar.progressBar.setMaximum(((seconds_left + self.studyTimeStopwatch.get_time())*granularity) + self.dailyStudyTime)
-        bar_holder.studyTimeLeftBar.setValue((seconds_left*granularity) - self.currentAnswerStopwatch.get_time(), time_string)
 
+        if seconds_left < self.currentAnswerStopwatch.get_time():
+            time_string = "~0"
+            bar_holder.studyTimeLeftBar.setValue(0)
+            return
+
+        if seconds_left >= 24*60*60:
+            time_string = ">1d"
+        else:
+            time_string = time.strftime('%H:%M:%S', time.gmtime(int(seconds_left) - int(self.currentAnswerStopwatch.get_time())))
+
+        bar_holder.studyTimeLeftBar.setValue((seconds_left*granularity) - self.currentAnswerStopwatch.get_time(), time_string)
+        
     ### POINT BAR
 
     def get_exponential_decay(self):
