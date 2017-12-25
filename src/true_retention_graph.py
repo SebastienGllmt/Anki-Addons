@@ -150,13 +150,17 @@ def todayStats_new(self):
 def process_data(last_day, retentions):
   data = []
 
+  if len(retentions) == 0:
+    return data
   for day in range(last_day, 0):
+    # get ratio of remembered cards
     retention = retentions[day][0]
     retention = float(retention)
-    if retention >= 0: #61nine20
+    if retention >= 0: # if the denominator is 0, we set the ratio to -1
       data.append((day + 1, retention))
     else:
       if len(data) > 0:
+        # extend retention value of previous day
         data.append((day + 1, data[-1][1]))
   return data
 
@@ -164,7 +168,9 @@ def new_progressGraphs(*args, **kwargs):
   now = time.time()
   self = args[0]
 
+  # get number of days to look back
   last_day = -min(365 * 10, periods[self.type]) - 1
+  # get number of milliseconds to look back
   last_day_t = (self.col.sched.dayCutoff + 86400 * last_day) * 1000
   
   #young
