@@ -28,11 +28,3 @@ Useful to know to adjust your card ease settings to avoid over-forgetting
 **Note**: This is not originally my addon. I just added some features. I will share this code with the author if they ever publish their project on Github
 
 ![example](http://i.imgur.com/1i0f8Tw.png)
-
-## StudyAhead Audio
-
-Exports the audio from the cards you haven't reviewed yet into a file
-The hope is that you can listen to these while doing work that stops you from studying but doesn't stop you from listening to something
-Thay way when you have time to study, you will be used to the audio and can study faster
-
-**Note**: This is not based off any scientific evidence that this would be useful. Hopefully it's useful to you.
