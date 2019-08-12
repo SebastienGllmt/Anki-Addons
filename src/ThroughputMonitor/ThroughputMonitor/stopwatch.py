@@ -8,6 +8,8 @@ License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 
 import time
 
+__all__ = ["Stopwatch"]
+
 class Stopwatch:
 
     def __init__(self):
