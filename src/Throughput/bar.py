@@ -10,6 +10,21 @@ License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 from aqt.qt import *
 from aqt import mw
 
+__all__ = ["ProgressBar"]
+
+# Plain QWidget returns invalid sizes if not in a layout so we need to fix this
+class EmptyWidget(QWidget):
+    def __init__(self):      
+        super().__init__()
+
+    def sizeHint(self):
+        # QSize(0,0) has a special meaning so we pick (1,1) arbitrarily
+        return QSize(1, 1)
+
+    def minimumSizeHint(self):
+        return QSize(1, 1)
+
+
 class ProgressBar:
 
     def __init__(self,
@@ -63,10 +78,10 @@ class ProgressBar:
 
         if pbStyle == None:
             if maxWidth:
-                if orientationHV == Qt.Horizontal:
-                    restrictSize = "max-height: %s;" % maxWidth
+                if self.progressBar.orientation() == Qt.Vertical:
+                    restrictSize = "height: %s;" % maxWidth
                 else:
-                    restrictSize = "max-width: %s;" % maxWidth
+                    restrictSize = "width: %s;" % maxWidth
             else:
                 restrictSize = ""
             
@@ -111,7 +126,7 @@ class ProgressBar:
 
         mw.setDockNestingEnabled(True)
         dockWidgets = [QDockWidget() for _ in barList]
-        widgets = [QWidget() for _ in barList]
+        widgets = [EmptyWidget() for _ in barList]
 
         prevWidget = None
         existing_widgets = [widget for widget in mw.findChildren(QDockWidget) if mw.dockWidgetArea(widget) == dockArea]
@@ -121,7 +136,6 @@ class ProgressBar:
         for i, bar in enumerate(barList):
             dock = dockWidgets[i]
             tWidget = widgets[i]
-            dock.setObjectName("pbDock_" + str(i))
             dock.setWidget(bar)
             dock.setTitleBarWidget( tWidget )
             mw.addDockWidget(dockArea, dock)

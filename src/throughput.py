@@ -15,8 +15,7 @@ Based off code by Glutanimate 2017 <https://glutanimate.com/>
 License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 """
 
-import Throughput
-from Throughput.bar import ProgressBar
+from .ThroughputMonitor.bar import ProgressBar
 from aqt.qt import *
 
 class settings:
@@ -62,9 +61,8 @@ class settings:
     # General bar settings
 
     # area where the bars will appear. Uncomment the one you want to 
-    # note: Qt.LeftDockWidgetArea and Qt.RightDockWidgetArea are not well supported
-    #bar_area = Qt.TopDockWidgetArea
-    bar_area = Qt.BottomDockWidgetArea
+    # note: only Qt.TopDockWidgetArea works well
+    bar_area = Qt.TopDockWidgetArea
 ############# END USER CONFIGURABLE SETTINGS #############
 
 __version__ = '1.0'
@@ -79,9 +77,9 @@ from anki.utils import json, ids2str
 from aqt.reviewer import Reviewer
 from aqt import mw
 
-from Throughput.stopwatch import Stopwatch
+from .ThroughputMonitor.stopwatch import Stopwatch
 
-fire_file = os.path.join(mw.pm.addonFolder(), 'Throughput', 'img', 'fire.png')
+fire_file = os.path.join(mw.pm.addonFolder(), 'ThroughputMonitor', 'img', 'fire.png')
 _flameLabel = None
 
 def getFlame(parent=None):
