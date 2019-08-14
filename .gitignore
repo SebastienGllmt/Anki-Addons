@@ -59,3 +59,4 @@ User 1/*
 addons21/*
 !addons21/ThroughputMonitor
 !addons21/ThroughputHistorical
+!addons21/TrueRetentionGraph
