@@ -1,5 +1,3 @@
-*.ankiaddon
-
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
@@ -48,8 +46,16 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
-src/*
-!src/true_retention_graph.py
-!src/throughput*
-!src/studyahead_audio*
-src/*.log
+# Ignores to allow placement in Anki subfolder
+
+crash.log
+prefs21.db
+README.txt
+*.pyc
+meta.json
+User 1/*
+*.ankiaddon
+
+addons21/*
+!addons21/ThroughputMonitor
+!addons21/ThroughputHistorical
