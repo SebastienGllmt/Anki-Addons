@@ -29,16 +29,25 @@ from anki.hooks import wrap
 # debug
 import time
 from aqt.utils import showInfo
+from anki.lang import _
 
 ###
 #  Setup our new graph
 ###
 
 periods = [30, 365, float('inf')]
+
 def new_progressGraphs(*args, **kwargs):
     self = args[0]
 
-    last_day = -min(365 * 10, periods[self.type]) - 1
+    start_not_used, num_buckets, bucket_size_days = self.get_start_end_chunk()
+
+    if num_buckets:
+        last_day = -(num_buckets * bucket_size_days) - 1
+    else:
+        # arbitrary day way in the past (to make sure it covers full deck life)
+        last_day = -(365 * 20) - 1
+
     last_day_t = (self.col.sched.dayCutoff + 24*60*60 * last_day) * 1000
     raw_data = get_data(self, self._revlogLimit(), last_day_t, self.col.sched.dayCutoff * 1000)
     
@@ -71,6 +80,7 @@ def new_progressGraphs(*args, **kwargs):
                         % (settings.batch_time, settings.group_for_averaging, settings.threshold, settings.batch_time),
                         colors[i],
                         labels[i],
+                        bucket_size_days,
                         lines = True)
 
     return result
@@ -178,7 +188,7 @@ def _round_up_max(max_val):
     return math.ceil(float(max_val)/m)*m
 
 def _plot(self, data, title, subtitle,
-          color, label, lines = False):
+          color, label, bucket_size_days, lines = False):
     global _num_graphs
 
     if not data:
@@ -198,8 +208,8 @@ def _plot(self, data, title, subtitle,
         self,
         id="throughput-%s" % _num_graphs,
         data=graph_data,
+        xunit=bucket_size_days,
         ylabel="Reviews in Batch",
-        timeTicks=False,
         conf=dict(
             xaxis=xaxes,
             yaxes=yaxes))
