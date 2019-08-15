@@ -46,6 +46,7 @@ def new_progressGraphs(*args, **kwargs):
         last_day = -(num_buckets * bucket_size_days) - 1
     else:
         # arbitrary day way in the past (to make sure it covers full deck life)
+        # todo: replace by calculation of # days since Anki launched
         last_day = -(365 * 20) - 1
 
     last_day_t = (self.col.sched.dayCutoff + 24*60*60 * last_day) * 1000
