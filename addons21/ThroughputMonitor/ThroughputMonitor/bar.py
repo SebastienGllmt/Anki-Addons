@@ -135,6 +135,11 @@ class ProgressBar:
 
         for i, bar in enumerate(barList):
             dock = dockWidgets[i]
+
+            # need a unique [a-zA-Z] suffix to suppress saveState() warning
+            uniqueSuffix = chr(ord('a') + i)
+            dock.setObjectName("throughput" + uniqueSuffix)
+
             tWidget = widgets[i]
             dock.setWidget(bar)
             dock.setTitleBarWidget( tWidget )
