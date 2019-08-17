@@ -1,0 +1,35 @@
+{
+  "show_flame": true,
+  "flame_height": 100,
+  "threshold_for_batch": 5,
+  "timebox": 300,
+  "countdown_colors": [
+    {
+      "until": 0.50,
+      "bg_color": "#44722a",
+      "fg_color": "#5cb82a"
+    },
+    {
+      "until": 0.10,
+      "bg_color": "#72652a",
+      "fg_color": "#b89e2a"
+    },
+    {
+      "until": 0.00,
+      "bg_color": "#722a44",
+      "fg_color": "#b82a5c"
+    }
+  ],
+  "invert_timer": false,
+  "countdown_timer_as_percentage": false,
+  "penalize_idle": false,
+  "exponential_weight": 0.5,
+  "number_batches_to_keep": 5,
+  "points_as_percentage": true,
+  "points_as_number": true,
+  "goal_offset": 2.0,
+  "initial_throughput_guess": 2,
+  "bonus_points_by_card_type": [2, 0, 0, 0],
+  "include_all_study_time_for_day": true,
+  "show_time_till_end": true
+}
