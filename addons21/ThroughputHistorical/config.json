@@ -1,0 +1,6 @@
+{
+  "batch_time": 5,
+  "group_for_averaging": 5,
+  "threshold": 5,
+  "add_all_graphs": false
+}

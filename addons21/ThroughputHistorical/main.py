@@ -8,17 +8,10 @@ Based off code for True Retention Graph (https://ankiweb.net/shared/info/8086762
 
 License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 """
-class settings:
-############### YOU MAY EDIT THESE SETTINGS ###############
-    batch_time = 5            # the number of minutes for a batch of studies
-    group_for_averaging = 5   # the number of batches to average together
 
-    add_all_graphs = False # whether to generate a graph for every card type or only a single "Cumulative" graph
+from aqt import mw
 
-    # how many studies have to have occurred in a batch for it to be considered
-    # this is because otherwise studying just one card randomly during your free time severely impacts the graph
-    threshold = 5
-############# END USER CONFIGURABLE SETTINGS #############
+settings = mw.addonManager.getConfig(__name__)
 
 import math
 import itertools
@@ -26,10 +19,6 @@ import itertools
 import anki.stats
 from anki import version
 from anki.hooks import wrap
-
-# debug
-import time
-from aqt.utils import showInfo
 from anki.lang import _
 
 ###
@@ -52,7 +41,7 @@ def new_progressGraphs(*args, **kwargs):
     raw_data = get_data(self, self._revlogLimit(), last_day_t, self.col.sched.dayCutoff * 1000)
     
     retentions = [get_retention(self, raw_data, filter_none)]
-    if settings.add_all_graphs:
+    if settings['add_all_graphs']:
         retentions.append(get_retention(self, raw_data, filter_for_young))
         retentions.append(get_retention(self, raw_data, filter_for_mature))
         retentions.append(get_retention(self, raw_data, filter_for_new))
@@ -77,7 +66,12 @@ def new_progressGraphs(*args, **kwargs):
                         "Historical Throughput",
                         """Looks at how many cards you study in %d minutes and averages it in groups of %d
                         <br>Note: There must have been more than %d reviews in %d minutes for it to count"""
-                        % (settings.batch_time, settings.group_for_averaging, settings.threshold, settings.batch_time),
+                        % (
+                            settings['batch_time'],
+                            settings['group_for_averaging'],
+                            settings['threshold'],
+                            settings['batch_time']
+                        ),
                         colors[i],
                         labels[i],
                         bucket_size_days,
@@ -137,10 +131,10 @@ def get_retention(self, data, rev_filter):
         revtime, ivl, typ = row
         if not rev_filter(ivl, typ):
             continue
-        if revtime >= last_batch - settings.batch_time * 60 * 1000:
+        if revtime >= last_batch - settings['batch_time'] * 60 * 1000:
             batch_size += 1
         else:
-            if batch_size >= settings.threshold:
+            if batch_size >= settings['threshold']:
                 munged.append(batch_size)
             last_batch = revtime
             batch_size = 1
@@ -152,19 +146,19 @@ def get_retention(self, data, rev_filter):
 
     shrunk_data = []
     i = 0
-    while len(munged) > i + settings.group_for_averaging:
+    while len(munged) > i + settings['group_for_averaging']:
         average = 0
-        for j in range(i,i+settings.group_for_averaging):
+        for j in range(i,i+settings['group_for_averaging']):
             average += munged[j]
-        shrunk_data.append(average / settings.group_for_averaging)
-        i += settings.group_for_averaging
+        shrunk_data.append(average / settings['group_for_averaging'])
+        i += settings['group_for_averaging']
     # put in any leftover elements
     if i < len(munged):
         average = 0
         for j in range(i,len(munged)):
             average += munged[j]
         shrunk_data.append(average / (len(munged)-i))
-        i += settings.group_for_averaging
+        i += settings['group_for_averaging']
 
     return shrunk_data
 
