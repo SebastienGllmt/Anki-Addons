@@ -8,7 +8,6 @@ Based off code for True Retention Graph (https://ankiweb.net/shared/info/8086762
 
 License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 """
-
 class settings:
 ############### YOU MAY EDIT THESE SETTINGS ###############
     batch_time = 5            # the number of minutes for a batch of studies
@@ -16,14 +15,16 @@ class settings:
 
     add_all_graphs = False # whether to generate a graph for every card type or only a single "Cumulative" graph
 
-    # how many studies have to have occured in a batch for it to be considered
-    # this is because otherwise studying just one card randomly during your free time severly impacts the graph
+    # how many studies have to have occurred in a batch for it to be considered
+    # this is because otherwise studying just one card randomly during your free time severely impacts the graph
     threshold = 5
 ############# END USER CONFIGURABLE SETTINGS #############
 
 import math
+import itertools
 
 import anki.stats
+from anki import version
 from anki.hooks import wrap
 
 # debug
@@ -205,11 +206,13 @@ def _plot(self, data, title, subtitle,
 
     txt = self._title(_(title), _(subtitle))
 
+    # can only disable x-axis labels after this PR https://github.com/dae/anki/pull/323
+    canDisableXAxis = moreRecentThan(2, 1, 15)
     txt += _graph(
         self,
         id="throughput-%s" % _num_graphs,
         data=graph_data,
-        xunit=bucket_size_days,
+        xunit=None if canDisableXAxis else bucket_size_days,
         ylabel="Reviews in Batch",
         conf=dict(
             xaxis=xaxes,
@@ -222,6 +225,27 @@ def _plot(self, data, title, subtitle,
     txt += self._lineTbl(text_lines)
 
     return txt
+
+def moreRecentThan(major, minor, patch):
+    # really really basic test for semantic versioning.
+    try:
+        parts = version.split(".")
+        if major < int(parts[0]):
+            return True
+        if minor < int(parts[1]):
+            return True
+        # patch often has a suffix
+        # ex: 2.1.5beta2
+        patchNum = ''.join(itertools.takewhile(str.isdigit, parts[2]))
+        if patch < int(patchNum):
+            return True
+
+        return False
+    except:
+        # don't know if this format will be followed in future Anki versions
+        # so if parsing fails, just return True
+        return True
+
 
 ###
 #  Swap in our new graph ###
