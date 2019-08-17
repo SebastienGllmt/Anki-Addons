@@ -36,8 +36,6 @@ from anki.lang import _
 #  Setup our new graph
 ###
 
-periods = [30, 365, float('inf')]
-
 def new_progressGraphs(*args, **kwargs):
     self = args[0]
 
@@ -205,6 +203,11 @@ def _plot(self, data, title, subtitle,
     xaxes = [dict(min=0, max=max_xaxis)]
 
     txt = self._title(_(title), _(subtitle))
+
+    # Anki tries to be smart for DeckLife and automatically infer what should be shown
+    # however, in our case, it's better to just always shows days for deck life (if we need to show an x-axis)
+    if self.type == 2:
+        bucket_size_days = 1
 
     # can only disable x-axis labels after this PR https://github.com/dae/anki/pull/323
     canDisableXAxis = moreRecentThan(2, 1, 15)
