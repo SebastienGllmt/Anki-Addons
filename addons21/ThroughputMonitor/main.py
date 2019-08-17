@@ -79,7 +79,8 @@ from aqt import mw
 
 from .ThroughputMonitor.stopwatch import Stopwatch
 
-fire_file = os.path.join(mw.pm.addonFolder(), 'ThroughputMonitor', 'img', 'fire.png')
+addon_path = os.path.dirname(__file__)
+fire_file = os.path.join(addon_path, 'img', 'fire.png')
 _flameLabel = None
 
 def getFlame(parent=None):
