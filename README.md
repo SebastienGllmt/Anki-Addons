@@ -1,24 +1,20 @@
-# Anki-Addons
-General repository for Anki addons I develop
+## Throughput Monitor [[826650564]](https://ankiweb.net/shared/info/826650564)
 
-## Throughput Monitor
-Tries to gamify Anki. It does the following
-1) Measures your studies in block of time (say a 10 minutes) through a countdown bar
-2) Measures a rolling average of how much you study in the given timespan
-3) Show you how many cards you've studied in this timespan compared to your average
-4) If you surpass the rolling average, a flame will appear to show you that you're on fire!
+See [config](addons21/ThroughputMonitor/config.md)
 
-This addon is specially made to be compatible with https://ankiweb.net/shared/info/2091361802
+This addon is specially made to be compatible with https://ankiweb.net/shared/info/2091361802 and works well with https://ankiweb.net/shared/info/1046608507
 
 Here is an example of me studying on a 1 minute countdown while also using the Progress Bar plugin
 
 ![example](https://thumbs.gfycat.com/SlimLividAardvark-size_restricted.gif)
 
-## Historical Throughput
+## Historical Throughput [[85345973]](https://ankiweb.net/shared/info/485345973)
 
-Adds a new graph to the statistics screen that shows you your historical throughput on Anki
+See [config](addons21/ThroughputHistorical/config.md)
 
 ![example](http://i.imgur.com/wlFqJ5U.png)
+
+Note: the x-axis for this graph is not meaningful since it represents the number of batches instead of a specific time interval
 
 ## True Retention Graph
 
