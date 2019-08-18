@@ -39,8 +39,6 @@ bar_area = Qt.TopDockWidgetArea
 
 adjusted_initial_guess = settings['initial_throughput_guess'] - settings['goal_offset'] 
 
-__version__ = '1.0'
-
 addon_path = os.path.dirname(__file__)
 fire_file = os.path.join(addon_path, 'img', 'fire.png')
 _flameLabel = None
@@ -239,8 +237,13 @@ class ThroughputTracker(object):
             if self.batchPointCount[1] >= maximum and _flameLabel == None:
                 getFlame()
             if self.batchPointCount[1] < maximum and _flameLabel != None:
-                _flameLabel.deleteLater()
+                old_flame = _flameLabel
                 _flameLabel = None
+                try:
+                    old_flame.deleteLater()
+                except:
+                    # already deleted as parent window closed
+                    pass
 
     def adjustPointCount(self, card, increment):
         if card.type >= 0 and card.type < len(settings['bonus_points_by_card_type']):
@@ -427,8 +430,13 @@ def renderProgressBars(state, oldState):
     else:
         global _flameLabel
         if _flameLabel != None:
-            _flameLabel.deleteLater()
+            old_flame = _flameLabel
             _flameLabel = None
+            try:
+                old_flame.deleteLater()
+            except:
+                # already deleted as parent window closed
+                pass
         for bar in bar_holder.progress_bars:
             bar.hide()
 addHook("afterStateChange", renderProgressBars)
