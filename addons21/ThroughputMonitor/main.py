@@ -20,7 +20,10 @@ import time
 
 from anki.collection import _Collection
 from anki.hooks import wrap, addHook, remHook, runHook
-from anki.sched import Scheduler
+
+from anki.sched import Scheduler as sched1
+from anki.schedv2 import Scheduler as sched2
+
 from anki.utils import json, ids2str
 
 from aqt.reviewer import Reviewer
@@ -465,7 +468,8 @@ def updateThroughputOnAnswer(x, card, ease):
     throughput_tracker.currentAnswerStopwatch.reset()
     throughput_tracker.currentAnswerStopwatch.start()
     throughput_tracker.adjustPointCount(card, increment=True)
-Scheduler.answerCard = wrap(Scheduler.answerCard, updateThroughputOnAnswer, "before")
+sched1.answerCard = wrap(sched1.answerCard, updateThroughputOnAnswer, "before")
+sched2.answerCard = wrap(sched2.answerCard, updateThroughputOnAnswer, "before")
 
 # check for undos and remove points based off of it
 def updateThroughputOnUndo(x, _old):
