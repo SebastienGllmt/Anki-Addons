@@ -478,11 +478,12 @@ def updateThroughputOnUndo(x, _old):
         card = mw.col.getCard(cardid)
         throughput_tracker = GetStateForCol()
         if throughput_tracker == None:
-            return
+            return cardid
 
         throughput_tracker.cardsLeftSnapshot = _getNumCardsLeft()
 
         throughput_tracker.adjustPointCount(card, increment=False)
+    return cardid
 _Collection.undo = wrap(_Collection.undo, updateThroughputOnUndo, "around")
 
 # stop the stopwatch when we exit reviews
