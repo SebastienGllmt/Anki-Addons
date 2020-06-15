@@ -76,7 +76,6 @@ def _plot(self, data, title, subtitle,
     id="trg-%s" % _num_graphs,
     data=graph_data,
     ylabel="Retention",
-    timeTicks = False,
     conf=dict(
       xaxis=dict(max=0.5),
       yaxes=yaxes))
