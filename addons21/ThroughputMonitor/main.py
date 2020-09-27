@@ -23,6 +23,7 @@ from anki.hooks import wrap, addHook, remHook, runHook
 
 from anki.sched import Scheduler as sched1
 from anki.schedv2 import Scheduler as sched2
+from anki import version as anki_version
 
 from anki.utils import json, ids2str
 
@@ -34,6 +35,10 @@ from .ThroughputMonitor.bar import ProgressBar
 from .ThroughputMonitor.stopwatch import Stopwatch
 
 settings = mw.addonManager.getConfig(__name__)
+
+hasDeckDueList = anki_version.startswith("2.0.") or (
+    anki_version.startswith("2.1.") and int(anki_version.split(".")[-1]) < 28
+)
 
 # area where the bars will appear.
 # too unstable to provide as a user setting
@@ -317,12 +322,20 @@ def _getNumCardsLeft():
     rev = lrn = nu = 0
 
     left = 0
-    # get number of cards
-    for tree in [deck for deck in mw.col.sched.deckDueList() if deck[1] in active_decks]:
-        rev += tree[2]
-        lrn += tree[3]
-        nu += tree[4]
-        left += nu+lrn+rev
+
+    if hasDeckDueList:
+        # get number of cards
+        for tree in [deck for deck in mw.col.sched.deckDueList() if deck[1] in active_decks]:
+            rev += tree[2]
+            lrn += tree[3]
+            nu += tree[4]
+            left += nu+lrn+rev
+    else:
+        for node in [node for node in mw.col.sched.deck_due_tree().children if node.deck_id in active_decks]:
+            rev += node.review_count
+            lrn += node.learn_count
+            nu += node.new_count
+            left += nu+lrn+rev
 
     return left
 
